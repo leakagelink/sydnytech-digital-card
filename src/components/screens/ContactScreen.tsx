@@ -22,8 +22,7 @@ const ContactScreen = () => {
     await new Promise(resolve => setTimeout(resolve, 1000));
     
     // Open WhatsApp with the message
-    const whatsappMessage = `Name: ${formData.name}%0APhone: ${formData.phone}%0AEmail: ${formData.email}%0AMessage: ${formData.message}`;
-    window.open(`https://wa.me/919325739428?text=${whatsappMessage}`, "_blank");
+    window.open("https://wa.link/9czb58", "_blank");
     
     toast.success("Message sent successfully!");
     setFormData({ name: "", phone: "", email: "", message: "" });
@@ -110,7 +109,7 @@ const ContactScreen = () => {
             <Button 
               variant="accent" 
               className="flex-1"
-              onClick={() => window.open("https://wa.me/919325739428", "_blank")}
+              onClick={() => window.open("https://wa.link/9czb58", "_blank")}
             >
               <MessageCircle className="w-4 h-4" />
               WhatsApp

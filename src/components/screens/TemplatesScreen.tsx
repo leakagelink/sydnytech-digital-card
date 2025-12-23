@@ -461,10 +461,7 @@ const TemplatesScreen = () => {
   };
 
   const handleCreateCard = () => {
-    const message = previewData.name 
-      ? `Hi, I want to create a digital business card. My details: Name: ${previewData.name}, Designation: ${previewData.designation || "N/A"}, Company: ${previewData.company || "N/A"}`
-      : "Hi, I want to create a digital business card";
-    window.open(`https://wa.me/919325739428?text=${encodeURIComponent(message)}`, "_blank");
+    window.open("https://wa.link/9czb58", "_blank");
   };
 
   const getDisplayName = (templateId: number) => {
