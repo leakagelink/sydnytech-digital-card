@@ -15,6 +15,7 @@ import {
   Check,
   ArrowRight
 } from "lucide-react";
+import logoImage from "@/assets/sydnytech-logo.png";
 
 interface HomeScreenProps {
   onNavigate: (tab: string) => void;
@@ -69,9 +70,7 @@ const HomeScreen = ({ onNavigate }: HomeScreenProps) => {
       <header className="sticky top-0 z-30 bg-background/80 backdrop-blur-xl border-b border-border/50 px-4 py-3">
         <div className="flex items-center justify-between max-w-lg mx-auto">
           <div className="flex items-center gap-2">
-            <div className="w-9 h-9 rounded-xl bg-gradient-to-br from-primary to-primary/60 flex items-center justify-center">
-              <span className="text-sm font-display font-bold text-primary-foreground">SY</span>
-            </div>
+            <img src={logoImage} alt="SYDNYTECH" className="w-10 h-10 object-contain" />
             <span className="font-display font-bold text-lg">
               <span className="text-foreground">SYDNY</span>
               <span className="text-primary">TECH</span>

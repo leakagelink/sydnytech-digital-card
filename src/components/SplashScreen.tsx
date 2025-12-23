@@ -1,4 +1,5 @@
 import { useEffect, useState } from "react";
+import logoImage from "@/assets/sydnytech-logo.png";
 
 interface SplashScreenProps {
   onComplete: () => void;
@@ -141,23 +142,23 @@ const SplashScreen = ({ onComplete }: SplashScreenProps) => {
           />
 
           {/* Logo box */}
-          <div className="relative w-28 h-28 rounded-3xl bg-gradient-to-br from-primary via-primary/90 to-primary/70 flex items-center justify-center shadow-2xl shadow-primary/40 overflow-hidden">
+          <div className="relative w-32 h-32 rounded-3xl bg-background/80 backdrop-blur-sm flex items-center justify-center shadow-2xl overflow-hidden border border-border/30">
             {/* Inner shine effect */}
             <div 
-              className={`absolute inset-0 bg-gradient-to-tr from-transparent via-white/20 to-transparent transition-transform duration-1000 ${
+              className={`absolute inset-0 bg-gradient-to-tr from-transparent via-white/10 to-transparent transition-transform duration-1000 ${
                 phase >= 3 ? 'translate-x-full' : '-translate-x-full'
               }`}
               style={{ transform: phase >= 3 ? 'translateX(100%)' : 'translateX(-100%)' }}
             />
             
-            {/* Logo text */}
-            <span 
-              className={`text-5xl font-display font-bold text-primary-foreground transition-all duration-500 ${
+            {/* Logo image */}
+            <img 
+              src={logoImage}
+              alt="SYDNYTECH Logo"
+              className={`w-28 h-28 object-contain transition-all duration-500 ${
                 phase >= 2 ? 'opacity-100 scale-100' : 'opacity-0 scale-50'
               }`}
-            >
-              SY
-            </span>
+            />
           </div>
           
           {/* Pulse rings */}
