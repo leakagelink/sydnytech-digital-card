@@ -16,7 +16,6 @@ import {
   ArrowRight
 } from "lucide-react";
 import logoImage from "@/assets/sydnytech-logo.png";
-import GreetingsGallery from "@/components/GreetingsGallery";
 
 interface HomeScreenProps {
   onNavigate: (tab: string) => void;
@@ -118,9 +117,6 @@ const HomeScreen = ({ onNavigate }: HomeScreenProps) => {
           </div>
         </div>
       </section>
-
-      {/* Greetings Gallery */}
-      <GreetingsGallery />
 
       {/* How it Works */}
       <section className="px-4 py-10">
