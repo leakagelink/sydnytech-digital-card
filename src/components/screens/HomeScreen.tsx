@@ -13,7 +13,8 @@ import {
   CreditCard,
   FileText,
   Check,
-  ArrowRight
+  ArrowRight,
+  Globe
 } from "lucide-react";
 import logoImage from "@/assets/sydnytech-logo.png";
 
@@ -212,14 +213,20 @@ const HomeScreen = ({ onNavigate }: HomeScreenProps) => {
               <p className="text-xs text-muted-foreground">Call us now to connect</p>
             </div>
             
-            <div className="flex gap-3">
-              <Button variant="hero" className="flex-1" onClick={() => window.open("tel:+919325739428")}>
-                <Phone className="w-4 h-4" />
-                Call Now
-              </Button>
-              <Button variant="glass" className="flex-1" onClick={handleCreateCard}>
-                <MessageCircle className="w-4 h-4" />
-                WhatsApp
+            <div className="flex flex-col gap-3">
+              <div className="flex gap-3">
+                <Button variant="hero" className="flex-1" onClick={() => window.open("tel:+919325739428")}>
+                  <Phone className="w-4 h-4" />
+                  Call Now
+                </Button>
+                <Button variant="glass" className="flex-1" onClick={handleCreateCard}>
+                  <MessageCircle className="w-4 h-4" />
+                  WhatsApp
+                </Button>
+              </div>
+              <Button variant="outline" className="w-full" onClick={() => window.open("https://sydnytech.in/", "_blank")}>
+                <Globe className="w-4 h-4" />
+                Visit Website
               </Button>
             </div>
           </div>
