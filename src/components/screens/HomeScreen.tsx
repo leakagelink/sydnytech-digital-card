@@ -52,7 +52,7 @@ const pricingFeatures = [
 
 const HomeScreen = ({ onNavigate }: HomeScreenProps) => {
   const handleCreateCard = () => {
-    window.open("https://wa.me/919325739428?text=Hi%2C%20I%20want%20to%20create%20a%20digital%20business%20card", "_blank");
+    window.open("https://wa.link/9czb58", "_blank");
   };
 
   const handleCustomerLogin = () => {

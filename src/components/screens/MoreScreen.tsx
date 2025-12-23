@@ -37,7 +37,7 @@ const menuItems = [
         icon: MessageCircle, 
         label: "WhatsApp Support", 
         desc: "Chat with us directly",
-        action: () => window.open("https://wa.me/919325739428", "_blank"),
+        action: () => window.open("https://wa.link/9czb58", "_blank"),
         color: "bg-green-500/20 text-green-400"
       },
       { 
@@ -144,7 +144,7 @@ const MoreScreen = () => {
           <Button 
             variant="hero" 
             className="w-full"
-            onClick={() => window.open("https://wa.me/919325739428?text=Hi%2C%20I%20want%20to%20create%20a%20digital%20business%20card", "_blank")}
+            onClick={() => window.open("https://wa.link/9czb58", "_blank")}
           >
             Create Your Card Now
           </Button>
