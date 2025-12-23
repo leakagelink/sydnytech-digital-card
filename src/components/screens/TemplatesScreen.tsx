@@ -1,6 +1,7 @@
 import { useState } from "react";
 import { Button } from "@/components/ui/button";
-import { Share2, Eye, ArrowRight, Phone, Mail, Globe, MapPin, Star, Crown, Sparkles, Briefcase, Palette } from "lucide-react";
+import { Input } from "@/components/ui/input";
+import { Share2, Eye, ArrowRight, Phone, Mail, Globe, MapPin, Star, Crown, Sparkles, Briefcase, Palette, X, Check } from "lucide-react";
 import { toast } from "sonner";
 
 const templates = [
@@ -183,6 +184,12 @@ const categories = [
 const TemplatesScreen = () => {
   const [selectedTemplate, setSelectedTemplate] = useState<number | null>(null);
   const [activeCategory, setActiveCategory] = useState("all");
+  const [previewMode, setPreviewMode] = useState<number | null>(null);
+  const [previewData, setPreviewData] = useState({
+    name: "",
+    designation: "",
+    company: "",
+  });
 
   const filteredTemplates = activeCategory === "all" 
     ? templates 
@@ -212,8 +219,37 @@ const TemplatesScreen = () => {
     setSelectedTemplate(selectedTemplate === id ? null : id);
   };
 
+  const handleLivePreview = (id: number) => {
+    setPreviewMode(id);
+    setPreviewData({ name: "", designation: "", company: "" });
+  };
+
   const handleCreateCard = () => {
-    window.open("https://wa.me/919325739428?text=Hi%2C%20I%20want%20to%20create%20a%20digital%20business%20card", "_blank");
+    const message = previewData.name 
+      ? `Hi, I want to create a digital business card. My details: Name: ${previewData.name}, Designation: ${previewData.designation || "N/A"}, Company: ${previewData.company || "N/A"}`
+      : "Hi, I want to create a digital business card";
+    window.open(`https://wa.me/919325739428?text=${encodeURIComponent(message)}`, "_blank");
+  };
+
+  const getDisplayName = (templateId: number) => {
+    if (previewMode === templateId && previewData.name) {
+      return previewData.name;
+    }
+    return "Your Name";
+  };
+
+  const getDisplayDesignation = (templateId: number) => {
+    if (previewMode === templateId && previewData.designation) {
+      return previewData.designation;
+    }
+    return "Your Designation";
+  };
+
+  const getDisplayCompany = (templateId: number) => {
+    if (previewMode === templateId && previewData.company) {
+      return previewData.company;
+    }
+    return "Company Name";
   };
 
   return (
@@ -241,8 +277,8 @@ const TemplatesScreen = () => {
                   onClick={() => setActiveCategory(cat.id)}
                   className={`flex items-center gap-1.5 px-4 py-2 rounded-full text-sm font-medium whitespace-nowrap transition-all duration-300 ${
                     isActive 
-                      ? 'bg-primary text-primary-foreground shadow-lg shadow-primary/30' 
-                      : 'bg-muted/50 text-muted-foreground hover:bg-muted'
+                      ? "bg-primary text-primary-foreground shadow-lg shadow-primary/30" 
+                      : "bg-muted/50 text-muted-foreground hover:bg-muted"
                   }`}
                 >
                   <Icon className="w-4 h-4" />
@@ -259,16 +295,63 @@ const TemplatesScreen = () => {
         <div className="max-w-lg mx-auto grid grid-cols-1 gap-5">
           {filteredTemplates.map((template, index) => {
             const CategoryIcon = template.icon;
+            const isInPreviewMode = previewMode === template.id;
+            
             return (
               <div 
                 key={template.id}
                 className={`glass-card overflow-hidden transition-all duration-300 animate-in fade-in slide-in-from-bottom-4 ${
-                  selectedTemplate === template.id ? 'ring-2 ring-primary scale-[1.02]' : ''
+                  selectedTemplate === template.id || isInPreviewMode ? "ring-2 ring-primary scale-[1.02]" : ""
                 }`}
                 style={{ animationDelay: `${index * 50}ms` }}
               >
+                {/* Live Preview Input Form */}
+                {isInPreviewMode && (
+                  <div className="p-4 bg-primary/10 border-b border-primary/20 animate-in slide-in-from-top-2 duration-300">
+                    <div className="flex items-center justify-between mb-3">
+                      <div className="flex items-center gap-2">
+                        <Eye className="w-4 h-4 text-primary" />
+                        <span className="text-sm font-semibold text-primary">Live Preview Mode</span>
+                      </div>
+                      <Button 
+                        variant="ghost" 
+                        size="icon" 
+                        className="h-7 w-7"
+                        onClick={() => setPreviewMode(null)}
+                      >
+                        <X className="w-4 h-4" />
+                      </Button>
+                    </div>
+                    <div className="space-y-2">
+                      <Input
+                        placeholder="Enter your name"
+                        value={previewData.name}
+                        onChange={(e) => setPreviewData(prev => ({ ...prev, name: e.target.value.slice(0, 50) }))}
+                        className="bg-background/50 border-primary/30 focus:border-primary h-9 text-sm"
+                        maxLength={50}
+                      />
+                      <div className="grid grid-cols-2 gap-2">
+                        <Input
+                          placeholder="Designation"
+                          value={previewData.designation}
+                          onChange={(e) => setPreviewData(prev => ({ ...prev, designation: e.target.value.slice(0, 30) }))}
+                          className="bg-background/50 border-primary/30 focus:border-primary h-9 text-sm"
+                          maxLength={30}
+                        />
+                        <Input
+                          placeholder="Company"
+                          value={previewData.company}
+                          onChange={(e) => setPreviewData(prev => ({ ...prev, company: e.target.value.slice(0, 30) }))}
+                          className="bg-background/50 border-primary/30 focus:border-primary h-9 text-sm"
+                          maxLength={30}
+                        />
+                      </div>
+                    </div>
+                  </div>
+                )}
+
                 {/* Card Preview - Realistic Business Card Design */}
-                <div className={`relative ${template.cardBg} p-5 min-h-[200px]`}>
+                <div className={`relative ${template.cardBg} p-5 min-h-[200px] transition-all duration-300`}>
                   {/* Category Badge - Top Left */}
                   <div className={`absolute top-3 left-3 ${template.badgeBg} backdrop-blur-sm rounded-full px-2.5 py-1 border border-white/20 flex items-center gap-1.5`}>
                     <CategoryIcon className={`w-3 h-3 ${template.textColor}`} />
@@ -284,13 +367,21 @@ const TemplatesScreen = () => {
                   <div className="flex flex-col h-full justify-between pt-8">
                     {/* Logo & Name Section */}
                     <div className="flex items-start gap-4">
-                      <div className={`w-16 h-16 rounded-2xl ${template.accent} flex items-center justify-center shadow-lg border-2 border-white/30`}>
-                        <span className={`text-xl font-display font-bold ${template.category === 'minimal' || template.category === 'luxury' ? 'text-white' : template.textColor === 'text-white' ? 'text-slate-900' : 'text-white'}`}>SY</span>
+                      <div className={`w-16 h-16 rounded-2xl ${template.accent} flex items-center justify-center shadow-lg border-2 border-white/30 transition-transform duration-300 ${isInPreviewMode ? "scale-110" : ""}`}>
+                        <span className={`text-xl font-display font-bold ${template.category === "minimal" || template.category === "luxury" ? "text-white" : template.textColor === "text-white" ? "text-slate-900" : "text-white"}`}>
+                          {isInPreviewMode && previewData.name ? previewData.name.charAt(0).toUpperCase() : "SY"}
+                        </span>
                       </div>
-                      <div>
-                        <h3 className={`font-display font-bold text-lg ${template.textColor}`}>Your Name</h3>
-                        <p className={`text-sm ${template.textColor} opacity-80`}>Your Designation</p>
-                        <p className={`text-xs ${template.textColor} opacity-60 mt-1`}>Company Name</p>
+                      <div className="min-w-0 flex-1">
+                        <h3 className={`font-display font-bold text-lg ${template.textColor} truncate transition-all duration-300 ${isInPreviewMode && previewData.name ? "scale-105 origin-left" : ""}`}>
+                          {getDisplayName(template.id)}
+                        </h3>
+                        <p className={`text-sm ${template.textColor} opacity-80 truncate`}>
+                          {getDisplayDesignation(template.id)}
+                        </p>
+                        <p className={`text-xs ${template.textColor} opacity-60 mt-1 truncate`}>
+                          {getDisplayCompany(template.id)}
+                        </p>
                       </div>
                     </div>
 
@@ -307,7 +398,7 @@ const TemplatesScreen = () => {
                     </div>
 
                     {/* Bottom Branding */}
-                    <div className={`flex items-center justify-between mt-4 pt-3 border-t ${template.textColor === 'text-white' ? 'border-white/20' : 'border-slate-300/50'}`}>
+                    <div className={`flex items-center justify-between mt-4 pt-3 border-t ${template.textColor === "text-white" ? "border-white/20" : "border-slate-300/50"}`}>
                       <div>
                         <p className={`text-[10px] ${template.textColor} opacity-60`}>Powered by</p>
                         <p className={`text-xs font-display font-bold ${template.textColor}`}>SYDNYTECH</p>
@@ -340,26 +431,46 @@ const TemplatesScreen = () => {
                     <h4 className="font-display font-semibold">{template.name}</h4>
                     <p className="text-xs text-muted-foreground">{template.style} Style</p>
                   </div>
-                  <Button variant="hero" size="sm" onClick={handleCreateCard}>
-                    Use Template
-                    <ArrowRight className="w-4 h-4" />
-                  </Button>
+                  <div className="flex gap-2">
+                    {!isInPreviewMode ? (
+                      <>
+                        <Button 
+                          variant="outline" 
+                          size="sm" 
+                          onClick={() => handleLivePreview(template.id)}
+                          className="gap-1"
+                        >
+                          <Eye className="w-3.5 h-3.5" />
+                          Try It
+                        </Button>
+                        <Button variant="hero" size="sm" onClick={handleCreateCard}>
+                          Use
+                          <ArrowRight className="w-4 h-4" />
+                        </Button>
+                      </>
+                    ) : (
+                      <Button variant="hero" size="sm" onClick={handleCreateCard} className="gap-1">
+                        <Check className="w-4 h-4" />
+                        Create Card
+                      </Button>
+                    )}
+                  </div>
                 </div>
 
                 {/* Expanded Preview */}
-                {selectedTemplate === template.id && (
+                {selectedTemplate === template.id && !isInPreviewMode && (
                   <div className="p-4 border-t border-border/50 bg-card/50 animate-in slide-in-from-top-2 duration-300">
                     <h5 className="font-semibold text-sm mb-3">Template Features:</h5>
                     <div className="grid grid-cols-2 gap-2 mb-4">
-                      {['Click to Call', 'WhatsApp', 'Email', 'Location', 'Social Links', 'Photo Gallery', 'Video Gallery', 'Payment Section'].map((feature) => (
+                      {["Click to Call", "WhatsApp", "Email", "Location", "Social Links", "Photo Gallery", "Video Gallery", "Payment Section"].map((feature) => (
                         <div key={feature} className="flex items-center gap-2 text-xs text-muted-foreground">
                           <div className="w-1.5 h-1.5 rounded-full bg-primary" />
                           {feature}
                         </div>
                       ))}
                     </div>
-                    <Button variant="hero" className="w-full" onClick={handleCreateCard}>
-                      Create Card with This Template
+                    <Button variant="hero" className="w-full" onClick={() => handleLivePreview(template.id)}>
+                      Try with Your Name
                       <ArrowRight className="w-4 h-4" />
                     </Button>
                   </div>
@@ -375,7 +486,7 @@ const TemplatesScreen = () => {
         <div className="max-w-lg mx-auto">
           <div className="glass-card p-6 text-center bg-primary/5 border-primary/20">
             <h3 className="font-display font-bold text-lg mb-2">
-              Can't find what you're looking for?
+              Can not find what you are looking for?
             </h3>
             <p className="text-sm text-muted-foreground mb-4">
               We offer custom designs tailored to your brand
