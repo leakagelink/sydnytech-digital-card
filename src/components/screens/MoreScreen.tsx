@@ -9,6 +9,7 @@ import {
   Shield,
   MessageCircle
 } from "lucide-react";
+import logoImage from "@/assets/sydnytech-logo.png";
 
 const menuItems = [
   {
@@ -128,9 +129,7 @@ const MoreScreen = () => {
       <section className="px-4 py-6">
         <div className="max-w-lg mx-auto">
           <div className="glass-card p-6 text-center">
-            <div className="w-16 h-16 rounded-2xl bg-gradient-to-br from-primary to-primary/60 flex items-center justify-center mx-auto mb-4 shadow-lg shadow-primary/30">
-              <span className="text-2xl font-display font-bold text-primary-foreground">SY</span>
-            </div>
+            <img src={logoImage} alt="SYDNYTECH" className="w-20 h-20 object-contain mx-auto mb-4" />
             <h3 className="font-display font-bold text-lg mb-1">SYDNYTECH</h3>
             <p className="text-sm text-muted-foreground mb-4">Digital Business Cards</p>
             <p className="text-xs text-muted-foreground">Version 1.0.0</p>
