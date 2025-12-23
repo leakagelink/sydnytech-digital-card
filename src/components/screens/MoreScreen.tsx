@@ -1,0 +1,157 @@
+import { Button } from "@/components/ui/button";
+import { 
+  LogIn, 
+  Users, 
+  ExternalLink, 
+  Star, 
+  HelpCircle,
+  FileText,
+  Shield,
+  MessageCircle
+} from "lucide-react";
+
+const menuItems = [
+  {
+    section: "Account",
+    items: [
+      { 
+        icon: LogIn, 
+        label: "Customer Login", 
+        desc: "Access your dashboard",
+        action: () => window.open("https://sydnytech.in/panel/login", "_blank"),
+        color: "bg-primary/20 text-primary"
+      },
+      { 
+        icon: Users, 
+        label: "Franchise Login", 
+        desc: "Franchise partner access",
+        action: () => window.open("https://sydnytech.in/panel/franchisee-login", "_blank"),
+        color: "bg-accent/20 text-accent"
+      },
+    ]
+  },
+  {
+    section: "Support",
+    items: [
+      { 
+        icon: MessageCircle, 
+        label: "WhatsApp Support", 
+        desc: "Chat with us directly",
+        action: () => window.open("https://wa.me/919325739428", "_blank"),
+        color: "bg-green-500/20 text-green-400"
+      },
+      { 
+        icon: HelpCircle, 
+        label: "Help Center", 
+        desc: "FAQs and guides",
+        action: () => window.open("https://sydnytech.in", "_blank"),
+        color: "bg-blue-500/20 text-blue-400"
+      },
+    ]
+  },
+  {
+    section: "More",
+    items: [
+      { 
+        icon: Star, 
+        label: "Rate Us", 
+        desc: "Share your feedback",
+        action: () => window.open("https://sydnytech.in", "_blank"),
+        color: "bg-yellow-500/20 text-yellow-400"
+      },
+      { 
+        icon: FileText, 
+        label: "Terms of Service", 
+        desc: "Our policies",
+        action: () => window.open("https://sydnytech.in", "_blank"),
+        color: "bg-slate-500/20 text-slate-400"
+      },
+      { 
+        icon: Shield, 
+        label: "Privacy Policy", 
+        desc: "How we protect your data",
+        action: () => window.open("https://sydnytech.in", "_blank"),
+        color: "bg-purple-500/20 text-purple-400"
+      },
+    ]
+  }
+];
+
+const MoreScreen = () => {
+  return (
+    <div className="min-h-screen pb-24">
+      {/* Header */}
+      <header className="sticky top-0 z-30 bg-background/80 backdrop-blur-xl border-b border-border/50 px-4 py-4">
+        <div className="max-w-lg mx-auto">
+          <h1 className="font-display text-2xl font-bold">
+            More <span className="text-primary">Options</span>
+          </h1>
+          <p className="text-sm text-muted-foreground">Settings and quick links</p>
+        </div>
+      </header>
+
+      {/* Menu Sections */}
+      <div className="px-4 py-6">
+        <div className="max-w-lg mx-auto space-y-6">
+          {menuItems.map((section) => (
+            <div key={section.section}>
+              <h2 className="text-xs font-semibold text-muted-foreground uppercase tracking-wider mb-3 px-1">
+                {section.section}
+              </h2>
+              <div className="space-y-2">
+                {section.items.map((item) => {
+                  const Icon = item.icon;
+                  return (
+                    <button
+                      key={item.label}
+                      onClick={item.action}
+                      className="w-full glass-card p-4 flex items-center gap-4 hover:border-primary/30 transition-colors text-left"
+                    >
+                      <div className={`w-11 h-11 rounded-xl ${item.color} flex items-center justify-center`}>
+                        <Icon className="w-5 h-5" />
+                      </div>
+                      <div className="flex-1">
+                        <p className="font-semibold text-sm">{item.label}</p>
+                        <p className="text-xs text-muted-foreground">{item.desc}</p>
+                      </div>
+                      <ExternalLink className="w-4 h-4 text-muted-foreground" />
+                    </button>
+                  );
+                })}
+              </div>
+            </div>
+          ))}
+        </div>
+      </div>
+
+      {/* App Info */}
+      <section className="px-4 py-6">
+        <div className="max-w-lg mx-auto">
+          <div className="glass-card p-6 text-center">
+            <div className="w-16 h-16 rounded-2xl bg-gradient-to-br from-primary to-primary/60 flex items-center justify-center mx-auto mb-4 shadow-lg shadow-primary/30">
+              <span className="text-2xl font-display font-bold text-primary-foreground">SY</span>
+            </div>
+            <h3 className="font-display font-bold text-lg mb-1">SYDNYTECH</h3>
+            <p className="text-sm text-muted-foreground mb-4">Digital Business Cards</p>
+            <p className="text-xs text-muted-foreground">Version 1.0.0</p>
+          </div>
+        </div>
+      </section>
+
+      {/* CTA */}
+      <section className="px-4 py-4">
+        <div className="max-w-lg mx-auto">
+          <Button 
+            variant="hero" 
+            className="w-full"
+            onClick={() => window.open("https://wa.me/919325739428?text=Hi%2C%20I%20want%20to%20create%20a%20digital%20business%20card", "_blank")}
+          >
+            Create Your Card Now
+          </Button>
+        </div>
+      </section>
+    </div>
+  );
+};
+
+export default MoreScreen;
