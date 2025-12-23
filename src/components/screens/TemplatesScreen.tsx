@@ -1,6 +1,6 @@
 import { useState } from "react";
 import { Button } from "@/components/ui/button";
-import { Share2, Eye, ArrowRight } from "lucide-react";
+import { Share2, Eye, ArrowRight, Phone, Mail, Globe, MapPin } from "lucide-react";
 import { toast } from "sonner";
 
 const templates = [
@@ -9,42 +9,54 @@ const templates = [
     name: "Template 1",
     style: "Modern Gradient",
     gradient: "from-cyan-500 via-teal-500 to-emerald-500",
-    accent: "bg-cyan-500",
+    cardBg: "bg-gradient-to-br from-cyan-500 via-teal-500 to-emerald-500",
+    accent: "bg-cyan-600",
+    textColor: "text-white",
   },
   {
     id: 2,
-    name: "Template 2",
+    name: "Template 2", 
     style: "Dark Elegance",
     gradient: "from-slate-700 via-slate-800 to-slate-900",
-    accent: "bg-slate-600",
+    cardBg: "bg-gradient-to-br from-slate-700 via-slate-800 to-slate-900",
+    accent: "bg-amber-500",
+    textColor: "text-white",
   },
   {
     id: 3,
     name: "Template 3",
     style: "Sunset Vibes",
     gradient: "from-orange-500 via-rose-500 to-pink-500",
-    accent: "bg-orange-500",
+    cardBg: "bg-gradient-to-br from-orange-500 via-rose-500 to-pink-500",
+    accent: "bg-orange-600",
+    textColor: "text-white",
   },
   {
     id: 4,
     name: "Template 4",
     style: "Ocean Blue",
     gradient: "from-blue-500 via-indigo-500 to-violet-500",
-    accent: "bg-blue-500",
+    cardBg: "bg-gradient-to-br from-blue-500 via-indigo-500 to-violet-500",
+    accent: "bg-blue-600",
+    textColor: "text-white",
   },
   {
     id: 5,
     name: "Template 5",
     style: "Forest Green",
     gradient: "from-green-600 via-emerald-600 to-teal-600",
-    accent: "bg-green-600",
+    cardBg: "bg-gradient-to-br from-green-600 via-emerald-600 to-teal-600",
+    accent: "bg-green-700",
+    textColor: "text-white",
   },
   {
     id: 6,
     name: "Template 6",
-    style: "Royal Purple",
-    gradient: "from-purple-600 via-violet-600 to-indigo-600",
-    accent: "bg-purple-600",
+    style: "Royal Gold",
+    gradient: "from-amber-500 via-yellow-500 to-orange-500",
+    cardBg: "bg-gradient-to-br from-amber-500 via-yellow-500 to-orange-500",
+    accent: "bg-amber-600",
+    textColor: "text-slate-900",
   },
 ];
 
@@ -62,6 +74,7 @@ const TemplatesScreen = () => {
       try {
         await navigator.share(shareData);
       } catch {
+        navigator.clipboard.writeText("https://sydnytech.in");
         toast.success("Link copied to clipboard!");
       }
     } else {
@@ -92,73 +105,103 @@ const TemplatesScreen = () => {
 
       {/* Templates Grid */}
       <section className="px-4 py-6">
-        <div className="max-w-lg mx-auto space-y-4">
+        <div className="max-w-lg mx-auto grid grid-cols-1 gap-5">
           {templates.map((template) => (
             <div 
               key={template.id}
               className={`glass-card overflow-hidden transition-all duration-300 ${
-                selectedTemplate === template.id ? 'ring-2 ring-primary' : ''
+                selectedTemplate === template.id ? 'ring-2 ring-primary scale-[1.02]' : ''
               }`}
             >
-              {/* Card Preview */}
-              <div className={`relative h-48 bg-gradient-to-br ${template.gradient} p-5`}>
-                {/* Mock card content */}
-                <div className="absolute top-4 right-4 bg-background/20 backdrop-blur-sm rounded-lg px-2 py-1">
-                  <span className="text-[10px] font-bold text-foreground/90">SYDNYTECH</span>
+              {/* Card Preview - Realistic Business Card Design */}
+              <div className={`relative ${template.cardBg} p-5 min-h-[200px]`}>
+                {/* SYDNYTECH Branding - Top Right */}
+                <div className="absolute top-3 right-3 bg-white/20 backdrop-blur-sm rounded-lg px-3 py-1.5 border border-white/30">
+                  <span className={`text-xs font-display font-bold ${template.textColor}`}>SYDNYTECH</span>
                 </div>
-                
-                <div className="absolute bottom-0 left-0 right-0 bg-gradient-to-t from-background/80 to-transparent p-5">
-                  <div className="flex items-end justify-between">
+
+                {/* Card Content */}
+                <div className="flex flex-col h-full justify-between">
+                  {/* Logo & Name Section */}
+                  <div className="flex items-start gap-4">
+                    <div className={`w-16 h-16 rounded-2xl ${template.accent} flex items-center justify-center shadow-lg border-2 border-white/30`}>
+                      <span className={`text-xl font-display font-bold ${template.textColor}`}>SY</span>
+                    </div>
                     <div>
-                      <div className={`w-12 h-12 rounded-xl ${template.accent} mb-3 flex items-center justify-center`}>
-                        <span className="text-lg font-bold text-foreground">SY</span>
+                      <h3 className={`font-display font-bold text-lg ${template.textColor}`}>Your Name</h3>
+                      <p className={`text-sm ${template.textColor} opacity-80`}>Your Designation</p>
+                      <p className={`text-xs ${template.textColor} opacity-60 mt-1`}>Company Name</p>
+                    </div>
+                  </div>
+
+                  {/* Contact Icons Row */}
+                  <div className="flex justify-center gap-3 mt-4">
+                    {[Phone, Mail, Globe, MapPin].map((Icon, idx) => (
+                      <div 
+                        key={idx} 
+                        className={`w-10 h-10 rounded-xl bg-white/20 backdrop-blur-sm flex items-center justify-center border border-white/30`}
+                      >
+                        <Icon className={`w-5 h-5 ${template.textColor}`} />
                       </div>
-                      <h3 className="font-display font-bold text-lg text-foreground">{template.name}</h3>
-                      <p className="text-xs text-foreground/70">{template.style}</p>
+                    ))}
+                  </div>
+
+                  {/* Bottom Branding */}
+                  <div className="flex items-center justify-between mt-4 pt-3 border-t border-white/20">
+                    <div>
+                      <p className={`text-[10px] ${template.textColor} opacity-60`}>Powered by</p>
+                      <p className={`text-xs font-display font-bold ${template.textColor}`}>SYDNYTECH</p>
                     </div>
                     <div className="flex gap-2">
                       <Button 
                         variant="glass" 
                         size="icon"
+                        className="h-9 w-9 bg-white/20 border-white/30 hover:bg-white/30"
                         onClick={() => handlePreview(template.id)}
                       >
-                        <Eye className="w-4 h-4" />
+                        <Eye className={`w-4 h-4 ${template.textColor}`} />
                       </Button>
                       <Button 
                         variant="glass" 
                         size="icon"
+                        className="h-9 w-9 bg-white/20 border-white/30 hover:bg-white/30"
                         onClick={() => handleShare(template)}
                       >
-                        <Share2 className="w-4 h-4" />
+                        <Share2 className={`w-4 h-4 ${template.textColor}`} />
                       </Button>
                     </div>
                   </div>
                 </div>
               </div>
 
+              {/* Template Info Bar */}
+              <div className="p-4 flex items-center justify-between bg-card">
+                <div>
+                  <h4 className="font-display font-semibold">{template.name}</h4>
+                  <p className="text-xs text-muted-foreground">{template.style}</p>
+                </div>
+                <Button variant="hero" size="sm" onClick={handleCreateCard}>
+                  Use Template
+                  <ArrowRight className="w-4 h-4" />
+                </Button>
+              </div>
+
               {/* Expanded Preview */}
               {selectedTemplate === template.id && (
                 <div className="p-4 border-t border-border/50 bg-card/50 animate-in slide-in-from-top-2 duration-300">
-                  <div className="space-y-3">
-                    <div className="flex items-center gap-3">
-                      <div className={`w-10 h-10 rounded-full ${template.accent}`} />
-                      <div>
-                        <p className="font-semibold text-sm">Your Name</p>
-                        <p className="text-xs text-muted-foreground">Your Designation</p>
+                  <h5 className="font-semibold text-sm mb-3">Template Features:</h5>
+                  <div className="grid grid-cols-2 gap-2 mb-4">
+                    {['Click to Call', 'WhatsApp', 'Email', 'Location', 'Social Links', 'Photo Gallery'].map((feature) => (
+                      <div key={feature} className="flex items-center gap-2 text-xs text-muted-foreground">
+                        <div className="w-1.5 h-1.5 rounded-full bg-primary" />
+                        {feature}
                       </div>
-                    </div>
-                    <div className="grid grid-cols-4 gap-2">
-                      {['Call', 'WhatsApp', 'Email', 'Location'].map((action) => (
-                        <div key={action} className="glass-card p-2 text-center">
-                          <span className="text-[9px] text-muted-foreground">{action}</span>
-                        </div>
-                      ))}
-                    </div>
-                    <Button variant="hero" className="w-full" onClick={handleCreateCard}>
-                      Use This Template
-                      <ArrowRight className="w-4 h-4" />
-                    </Button>
+                    ))}
                   </div>
+                  <Button variant="hero" className="w-full" onClick={handleCreateCard}>
+                    Create Card with This Template
+                    <ArrowRight className="w-4 h-4" />
+                  </Button>
                 </div>
               )}
             </div>
