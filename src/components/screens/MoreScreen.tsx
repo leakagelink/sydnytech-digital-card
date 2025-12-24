@@ -10,7 +10,10 @@ import {
   MessageCircle,
   Info,
   RefreshCcw,
-  ChevronRight
+  ChevronRight,
+  Trash2,
+  Phone,
+  AlertTriangle
 } from "lucide-react";
 import { useNavigate } from "react-router-dom";
 import logoImage from "@/assets/sydnytech-logo.png";
@@ -44,6 +47,14 @@ const MoreScreen = () => {
       section: "Support",
       items: [
         { 
+          icon: Phone, 
+          label: "Contact Us", 
+          desc: "Get in touch with us",
+          action: () => navigate("/contact-us"),
+          color: "bg-primary/20 text-primary",
+          isExternal: false
+        },
+        { 
           icon: MessageCircle, 
           label: "WhatsApp Support", 
           desc: "Chat with us directly",
@@ -53,11 +64,11 @@ const MoreScreen = () => {
         },
         { 
           icon: HelpCircle, 
-          label: "Help Center", 
-          desc: "FAQs and guides",
-          action: () => window.open("https://sydnytech.in", "_blank"),
+          label: "FAQ & Help", 
+          desc: "Frequently asked questions",
+          action: () => navigate("/faq"),
           color: "bg-blue-500/20 text-blue-400",
-          isExternal: true
+          isExternal: false
         },
       ]
     },
@@ -86,6 +97,22 @@ const MoreScreen = () => {
           desc: "Cancellation and refunds",
           action: () => navigate("/refund-policy"),
           color: "bg-orange-500/20 text-orange-400",
+          isExternal: false
+        },
+        { 
+          icon: AlertTriangle, 
+          label: "Disclaimer", 
+          desc: "Important legal notices",
+          action: () => navigate("/disclaimer"),
+          color: "bg-yellow-500/20 text-yellow-400",
+          isExternal: false
+        },
+        { 
+          icon: Trash2, 
+          label: "Data Deletion", 
+          desc: "Request data removal",
+          action: () => navigate("/data-deletion"),
+          color: "bg-red-500/20 text-red-400",
           isExternal: false
         },
       ]
