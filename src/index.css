@@ -6,64 +6,67 @@
 
 @layer base {
   :root {
-    --background: 220 20% 4%;
-    --foreground: 210 40% 98%;
+    --background: 270 15% 3%;
+    --foreground: 280 20% 98%;
 
-    --card: 220 18% 8%;
-    --card-foreground: 210 40% 98%;
+    --card: 270 15% 7%;
+    --card-foreground: 280 20% 98%;
 
-    --popover: 220 18% 8%;
-    --popover-foreground: 210 40% 98%;
+    --popover: 270 15% 7%;
+    --popover-foreground: 280 20% 98%;
 
-    --primary: 174 72% 46%;
-    --primary-foreground: 220 20% 4%;
-    --primary-glow: 174 72% 56%;
+    /* Violet as primary */
+    --primary: 270 70% 55%;
+    --primary-foreground: 280 20% 98%;
+    --primary-glow: 270 80% 65%;
 
-    --secondary: 220 16% 14%;
-    --secondary-foreground: 210 40% 98%;
+    /* Dark purple secondary */
+    --secondary: 270 20% 12%;
+    --secondary-foreground: 280 20% 98%;
 
-    --muted: 220 14% 18%;
-    --muted-foreground: 215 20% 55%;
+    --muted: 270 15% 15%;
+    --muted-foreground: 270 15% 55%;
 
-    --accent: 16 85% 60%;
-    --accent-foreground: 220 20% 4%;
+    /* Pink as accent */
+    --accent: 330 85% 60%;
+    --accent-foreground: 280 20% 98%;
 
     --destructive: 0 84% 60%;
-    --destructive-foreground: 210 40% 98%;
+    --destructive-foreground: 280 20% 98%;
 
-    --border: 220 14% 18%;
-    --input: 220 14% 18%;
-    --ring: 174 72% 46%;
+    --border: 270 20% 15%;
+    --input: 270 20% 15%;
+    --ring: 270 70% 55%;
 
     --radius: 1rem;
 
-    /* Custom tokens */
-    --gradient-primary: linear-gradient(135deg, hsl(174 72% 46%), hsl(174 72% 36%));
-    --gradient-accent: linear-gradient(135deg, hsl(16 85% 60%), hsl(16 85% 50%));
-    --gradient-hero: linear-gradient(180deg, hsl(220 20% 4%) 0%, hsl(220 18% 8%) 100%);
-    --gradient-card: linear-gradient(145deg, hsl(220 18% 10%) 0%, hsl(220 18% 6%) 100%);
-    --gradient-glow: radial-gradient(ellipse at center, hsl(174 72% 46% / 0.15) 0%, transparent 70%);
+    /* Custom tokens - Violet to Pink gradient */
+    --gradient-primary: linear-gradient(135deg, hsl(270 70% 55%), hsl(330 85% 60%));
+    --gradient-accent: linear-gradient(135deg, hsl(330 85% 60%), hsl(330 85% 50%));
+    --gradient-hero: linear-gradient(180deg, hsl(270 15% 3%) 0%, hsl(270 15% 7%) 100%);
+    --gradient-card: linear-gradient(145deg, hsl(270 20% 10%) 0%, hsl(270 15% 5%) 100%);
+    --gradient-glow: radial-gradient(ellipse at center, hsl(270 70% 55% / 0.15) 0%, hsl(330 85% 60% / 0.1) 50%, transparent 70%);
     
-    --shadow-primary: 0 0 40px hsl(174 72% 46% / 0.3);
-    --shadow-card: 0 8px 32px hsl(0 0% 0% / 0.4);
-    --shadow-glow: 0 0 60px hsl(174 72% 46% / 0.2);
+    --shadow-primary: 0 0 40px hsl(270 70% 55% / 0.4);
+    --shadow-card: 0 8px 32px hsl(0 0% 0% / 0.5);
+    --shadow-glow: 0 0 60px hsl(330 85% 60% / 0.25);
     
     --font-display: 'Outfit', sans-serif;
     --font-body: 'Inter', sans-serif;
 
-    --sidebar-background: 220 18% 8%;
-    --sidebar-foreground: 210 40% 98%;
-    --sidebar-primary: 174 72% 46%;
-    --sidebar-primary-foreground: 220 20% 4%;
-    --sidebar-accent: 220 14% 18%;
-    --sidebar-accent-foreground: 210 40% 98%;
-    --sidebar-border: 220 14% 18%;
-    --sidebar-ring: 174 72% 46%;
+    --sidebar-background: 270 15% 7%;
+    --sidebar-foreground: 280 20% 98%;
+    --sidebar-primary: 270 70% 55%;
+    --sidebar-primary-foreground: 280 20% 98%;
+    --sidebar-accent: 270 20% 15%;
+    --sidebar-accent-foreground: 280 20% 98%;
+    --sidebar-border: 270 20% 15%;
+    --sidebar-ring: 270 70% 55%;
   }
 
   .dark {
-    --background: 220 20% 4%;
-    --foreground: 210 40% 98%;
+    --background: 270 15% 3%;
+    --foreground: 280 20% 98%;
   }
 }
 
@@ -94,7 +97,7 @@
 
   .gradient-text {
     @apply bg-clip-text text-transparent;
-    background-image: var(--gradient-primary);
+    background-image: linear-gradient(135deg, hsl(270 70% 55%), hsl(330 85% 60%));
   }
 
   .glow-primary {
