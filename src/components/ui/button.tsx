@@ -10,23 +10,23 @@ const buttonVariants = cva(
     variants: {
       variant: {
         default:
-          "bg-primary text-primary-foreground shadow-lg hover:shadow-primary/40 hover:bg-primary/90",
+          "bg-gradient-to-r from-[hsl(270,70%,55%)] to-[hsl(330,85%,60%)] text-white shadow-lg shadow-primary/40 hover:shadow-[0_0_30px_hsl(330,85%,60%,0.5)] hover:scale-[1.02]",
         destructive:
           "bg-destructive text-destructive-foreground shadow-sm hover:bg-destructive/90",
         outline:
-          "border border-border bg-transparent text-foreground hover:bg-muted hover:border-primary/50",
+          "border border-primary/50 bg-transparent text-foreground hover:bg-primary/10 hover:border-primary",
         secondary:
-          "bg-secondary text-secondary-foreground shadow-sm hover:bg-secondary/80",
+          "bg-gradient-to-r from-[hsl(270,50%,35%)] to-[hsl(300,50%,40%)] text-white shadow-md hover:shadow-primary/30 hover:scale-[1.02]",
         ghost: 
-          "text-foreground hover:bg-muted hover:text-foreground",
+          "text-foreground hover:bg-primary/10 hover:text-primary",
         link: 
           "text-primary underline-offset-4 hover:underline",
         hero:
-          "bg-gradient-to-r from-primary to-primary/80 text-primary-foreground shadow-lg shadow-primary/30 hover:shadow-primary/50 hover:scale-105",
+          "bg-gradient-to-r from-[hsl(270,70%,55%)] via-[hsl(300,75%,55%)] to-[hsl(330,85%,60%)] text-white shadow-lg shadow-[0_0_30px_hsl(300,70%,50%,0.4)] hover:shadow-[0_0_40px_hsl(330,85%,60%,0.6)] hover:scale-105 animate-pulse",
         accent:
-          "bg-accent text-accent-foreground shadow-lg shadow-accent/30 hover:shadow-accent/50 hover:bg-accent/90",
+          "bg-gradient-to-r from-[hsl(330,85%,55%)] to-[hsl(350,80%,60%)] text-white shadow-lg shadow-accent/40 hover:shadow-[0_0_30px_hsl(330,85%,60%,0.5)] hover:scale-[1.02]",
         glass:
-          "bg-card/60 backdrop-blur-xl border border-border/50 text-foreground hover:bg-card/80 hover:border-primary/30",
+          "bg-card/60 backdrop-blur-xl border border-primary/30 text-foreground hover:bg-primary/10 hover:border-primary/50",
       },
       size: {
         default: "h-11 px-6 py-2",
