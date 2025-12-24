@@ -7,78 +7,112 @@ import {
   HelpCircle,
   FileText,
   Shield,
-  MessageCircle
+  MessageCircle,
+  Info,
+  RefreshCcw,
+  ChevronRight
 } from "lucide-react";
+import { useNavigate } from "react-router-dom";
 import logoImage from "@/assets/sydnytech-logo.png";
 
-const menuItems = [
-  {
-    section: "Account",
-    items: [
-      { 
-        icon: LogIn, 
-        label: "Customer Login", 
-        desc: "Access your dashboard",
-        action: () => window.open("https://sydnytech.in/panel/login", "_blank"),
-        color: "bg-primary/20 text-primary"
-      },
-      { 
-        icon: Users, 
-        label: "Franchise Login", 
-        desc: "Franchise partner access",
-        action: () => window.open("https://sydnytech.in/panel/franchisee-login", "_blank"),
-        color: "bg-accent/20 text-accent"
-      },
-    ]
-  },
-  {
-    section: "Support",
-    items: [
-      { 
-        icon: MessageCircle, 
-        label: "WhatsApp Support", 
-        desc: "Chat with us directly",
-        action: () => window.open("https://wa.link/9czb58", "_blank"),
-        color: "bg-green-500/20 text-green-400"
-      },
-      { 
-        icon: HelpCircle, 
-        label: "Help Center", 
-        desc: "FAQs and guides",
-        action: () => window.open("https://sydnytech.in", "_blank"),
-        color: "bg-blue-500/20 text-blue-400"
-      },
-    ]
-  },
-  {
-    section: "More",
-    items: [
-      { 
-        icon: Star, 
-        label: "Rate Us", 
-        desc: "Share your feedback",
-        action: () => window.open("https://sydnytech.in", "_blank"),
-        color: "bg-yellow-500/20 text-yellow-400"
-      },
-      { 
-        icon: FileText, 
-        label: "Terms of Service", 
-        desc: "Our policies",
-        action: () => window.open("https://sydnytech.in", "_blank"),
-        color: "bg-slate-500/20 text-slate-400"
-      },
-      { 
-        icon: Shield, 
-        label: "Privacy Policy", 
-        desc: "How we protect your data",
-        action: () => window.open("https://sydnytech.in", "_blank"),
-        color: "bg-purple-500/20 text-purple-400"
-      },
-    ]
-  }
-];
-
 const MoreScreen = () => {
+  const navigate = useNavigate();
+
+  const menuItems = [
+    {
+      section: "Account",
+      items: [
+        { 
+          icon: LogIn, 
+          label: "Customer Login", 
+          desc: "Access your dashboard",
+          action: () => window.open("https://sydnytech.in/panel/login", "_blank"),
+          color: "bg-primary/20 text-primary",
+          isExternal: true
+        },
+        { 
+          icon: Users, 
+          label: "Franchise Login", 
+          desc: "Franchise partner access",
+          action: () => window.open("https://sydnytech.in/panel/franchisee-login", "_blank"),
+          color: "bg-accent/20 text-accent",
+          isExternal: true
+        },
+      ]
+    },
+    {
+      section: "Support",
+      items: [
+        { 
+          icon: MessageCircle, 
+          label: "WhatsApp Support", 
+          desc: "Chat with us directly",
+          action: () => window.open("https://wa.link/9czb58", "_blank"),
+          color: "bg-green-500/20 text-green-400",
+          isExternal: true
+        },
+        { 
+          icon: HelpCircle, 
+          label: "Help Center", 
+          desc: "FAQs and guides",
+          action: () => window.open("https://sydnytech.in", "_blank"),
+          color: "bg-blue-500/20 text-blue-400",
+          isExternal: true
+        },
+      ]
+    },
+    {
+      section: "Legal & Policies",
+      items: [
+        { 
+          icon: Shield, 
+          label: "Privacy Policy", 
+          desc: "How we protect your data",
+          action: () => navigate("/privacy-policy"),
+          color: "bg-purple-500/20 text-purple-400",
+          isExternal: false
+        },
+        { 
+          icon: FileText, 
+          label: "Terms of Service", 
+          desc: "Terms and conditions",
+          action: () => navigate("/terms-of-service"),
+          color: "bg-slate-500/20 text-slate-400",
+          isExternal: false
+        },
+        { 
+          icon: RefreshCcw, 
+          label: "Refund Policy", 
+          desc: "Cancellation and refunds",
+          action: () => navigate("/refund-policy"),
+          color: "bg-orange-500/20 text-orange-400",
+          isExternal: false
+        },
+      ]
+    },
+    {
+      section: "More",
+      items: [
+        { 
+          icon: Info, 
+          label: "About Us", 
+          desc: "Know more about SYDNYTECH",
+          action: () => navigate("/about-us"),
+          color: "bg-cyan-500/20 text-cyan-400",
+          isExternal: false
+        },
+        { 
+          icon: Star, 
+          label: "Rate Us", 
+          desc: "Share your feedback",
+          action: () => window.open("https://sydnytech.in", "_blank"),
+          color: "bg-yellow-500/20 text-yellow-400",
+          isExternal: true
+        },
+      ]
+    }
+  ];
+
   return (
     <div className="min-h-screen pb-24">
       {/* Header */}
@@ -115,7 +149,11 @@ const MoreScreen = () => {
                         <p className="font-semibold text-sm">{item.label}</p>
                         <p className="text-xs text-muted-foreground">{item.desc}</p>
                       </div>
-                      <ExternalLink className="w-4 h-4 text-muted-foreground" />
+                      {item.isExternal ? (
+                        <ExternalLink className="w-4 h-4 text-muted-foreground" />
+                      ) : (
+                        <ChevronRight className="w-4 h-4 text-muted-foreground" />
+                      )}
                     </button>
                   );
                 })}
