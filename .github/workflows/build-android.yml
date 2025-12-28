@@ -29,6 +29,8 @@ jobs:
     steps:
       - name: Checkout code
         uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
 
       - name: Detect project type
         id: detect
@@ -54,28 +56,29 @@ jobs:
         uses: actions/setup-node@v4
         with:
           node-version: 20
+          cache: 'npm'
 
       - name: Configure Vite for mobile
         if: steps.detect.outputs.type == 'web'
         run: |
-          if [ -f "vite.config.ts" ] || [ -f "vite.config.js" ]; then
-            echo "Configuring Vite for mobile build..."
-            if [ -f "vite.config.ts" ]; then
-              sed -i "s/base: *'[^']*'/base: '.\/'/g" vite.config.ts || true
-              if ! grep -q "base:" vite.config.ts; then
-                sed -i "s/defineConfig({/defineConfig({ base: '.\/'',/g" vite.config.ts || true
+          for config in vite.config.ts vite.config.js vite.config.mts; do
+            if [ -f "$config" ]; then
+              echo "Configuring $config for mobile build..."
+              if grep -q "base:" "$config"; then
+                sed -i "s/base: *['"][^'"]*['"]/base: '.\/'/" "$config"
+              else
+                sed -i "s/export default defineConfig({/export default defineConfig({ base: '.\/',/" "$config" || true
+                sed -i "s/export default defineConfig(/export default defineConfig({ base: '.\/' } \&\& defineConfig(/" "$config" 2>/dev/null || true
               fi
+              cat "$config"
             fi
-            if [ -f "vite.config.js" ]; then
-              sed -i "s/base: *'[^']*'/base: '.\/'/g" vite.config.js || true
-            fi
-          fi
+          done
 
       - name: Install dependencies
         if: steps.detect.outputs.type == 'web'
         run: |
           if [ -f "bun.lockb" ]; then
-            npm install -g bun && bun install
+            npm install -g bun && bun install --frozen-lockfile || bun install
           elif [ -f "yarn.lock" ]; then
             npm install -g yarn && yarn install --frozen-lockfile || yarn install
           elif [ -f "pnpm-lock.yaml" ]; then
@@ -89,25 +92,31 @@ jobs:
         run: |
           export VITE_BASE="./"
           npm run build || yarn build || pnpm build || bun run build
+          echo "Build completed!"
         env:
           CI: false
           NODE_ENV: production
           PUBLIC_URL: "./"
           BASE_URL: "./"
+          GENERATE_SOURCEMAP: false
 
-      - name: Fix asset paths
+      - name: Verify and fix build output
         if: steps.detect.outputs.type == 'web'
         run: |
+          echo "=== Looking for build output ==="
+          
           SRCDIR=""
-          for dir in dist build .next/out out public; do
-            if [ -d "$dir" ] && [ -f "$dir/index.html" ]; then
-              SRCDIR="$dir"
-              break
+          for dir in dist build .next/out out public/build; do
+            if [ -d "$dir" ]; then
+              if [ -f "$dir/index.html" ]; then
+                SRCDIR="$dir"
+                break
+              fi
             fi
           done
           
           if [ -z "$SRCDIR" ]; then
-            for dir in dist build; do
+            for dir in dist build out; do
               if [ -d "$dir" ]; then
                 SRCDIR="$dir"
                 break
@@ -116,198 +125,481 @@ jobs:
           fi
           
           if [ -z "$SRCDIR" ]; then
-            echo "ERROR: No build output found"
+            echo "ERROR: No build output directory found!"
+            ls -la
             exit 1
           fi
           
           echo "BUILD_DIR=$SRCDIR" >> $GITHUB_ENV
-          echo "Found build in: $SRCDIR"
+          echo "Found build directory: $SRCDIR"
+          
+          echo "=== Build directory contents ==="
+          ls -laR "$SRCDIR" | head -100
+          
+          echo "=== Total size of build ==="
+          du -sh "$SRCDIR"
+          du -sh "$SRCDIR"/* 2>/dev/null || true
           
           if [ -f "$SRCDIR/index.html" ]; then
-            echo "Fixing absolute paths in index.html..."
+            echo "=== Fixing paths in index.html ==="
             sed -i 's|="/|="./|g' "$SRCDIR/index.html"
             sed -i 's|href="/|href="./|g' "$SRCDIR/index.html"
             sed -i 's|src="/|src="./|g' "$SRCDIR/index.html"
             sed -i 's|url(/|url(./|g' "$SRCDIR/index.html"
-            echo "=== index.html content ==="
-            head -30 "$SRCDIR/index.html"
+            sed -i "s|='/|='./|g" "$SRCDIR/index.html"
+            echo "=== Fixed index.html ==="
+            cat "$SRCDIR/index.html"
           fi
           
-          echo "=== Build contents ==="
-          ls -la "$SRCDIR/"
+          find "$SRCDIR" -name "*.js" -exec sed -i 's|"/assets/|"./assets/|g' {} \; 2>/dev/null || true
+          find "$SRCDIR" -name "*.css" -exec sed -i 's|url(/|url(./|g' {} \; 2>/dev/null || true
 
-      - name: Create Android project
+      - name: Create complete Android project
         if: steps.detect.outputs.type == 'web'
         run: |
           PKG="${{ env.PACKAGE_NAME }}"
           PKG_PATH=$(echo "$PKG" | tr '.' '/')
           SRCDIR="${{ env.BUILD_DIR }}"
           
+          echo "Creating Android project structure..."
+          
           mkdir -p app/src/main/java/$PKG_PATH
           mkdir -p app/src/main/assets/www
           mkdir -p app/src/main/res/values
+          mkdir -p app/src/main/res/values-night
           mkdir -p app/src/main/res/drawable
+          mkdir -p app/src/main/res/drawable-v24
+          mkdir -p app/src/main/res/mipmap-mdpi
           mkdir -p app/src/main/res/mipmap-hdpi
           mkdir -p app/src/main/res/mipmap-xhdpi
+          mkdir -p app/src/main/res/mipmap-xxhdpi
+          mkdir -p app/src/main/res/mipmap-xxxhdpi
+          mkdir -p app/src/main/res/mipmap-anydpi-v26
+          mkdir -p app/src/main/res/xml
+          mkdir -p app/src/main/res/layout
           
-          echo "Copying web assets from $SRCDIR..."
-          cp -r "$SRCDIR"/* app/src/main/assets/www/
+          echo "=== Copying ALL web assets to Android ==="
+          cp -r "$SRCDIR"/. app/src/main/assets/www/
+          
+          echo "=== Copied assets size ==="
+          du -sh app/src/main/assets/www/
+          
+          echo "=== Assets structure ==="
+          find app/src/main/assets/www -type f | head -50
+          
+          FILE_COUNT=$(find app/src/main/assets/www -type f | wc -l)
+          echo "Total files copied: $FILE_COUNT"
           
           ICON_SRC=""
-          for icon in "$SRCDIR/favicon.png" "$SRCDIR/favicon.ico" "$SRCDIR/logo.png" "$SRCDIR/icon.png" "public/favicon.png" "public/favicon.ico" "public/logo.png"; do
+          for icon in "$SRCDIR/favicon.png" "$SRCDIR/logo.png" "$SRCDIR/icon.png" "$SRCDIR/app-icon.png" "$SRCDIR/favicon.ico" "public/favicon.png" "public/logo.png" "public/icon.png" "public/favicon.ico" "src/assets/logo.png" "src/assets/icon.png"; do
             if [ -f "$icon" ]; then
               ICON_SRC="$icon"
+              echo "Found icon: $icon"
               break
             fi
           done
           
           if [ -n "$ICON_SRC" ]; then
-            echo "Using icon: $ICON_SRC"
-            cp "$ICON_SRC" app/src/main/res/mipmap-hdpi/ic_launcher.png 2>/dev/null || true
-            cp "$ICON_SRC" app/src/main/res/mipmap-xhdpi/ic_launcher.png 2>/dev/null || true
+            echo "Copying icon to all mipmap densities..."
+            for density in mipmap-mdpi mipmap-hdpi mipmap-xhdpi mipmap-xxhdpi mipmap-xxxhdpi; do
+              cp "$ICON_SRC" "app/src/main/res/$density/ic_launcher.png" 2>/dev/null || true
+              cp "$ICON_SRC" "app/src/main/res/$density/ic_launcher_round.png" 2>/dev/null || true
+              cp "$ICON_SRC" "app/src/main/res/$density/ic_launcher_foreground.png" 2>/dev/null || true
+            done
+            ICON_REF="@mipmap/ic_launcher"
           else
-            echo "Creating default icon..."
-            echo '<?xml version="1.0" encoding="utf-8"?><shape xmlns:android="http://schemas.android.com/apk/res/android" android:shape="oval"><solid android:color="#6366F1"/></shape>' > app/src/main/res/drawable/ic_launcher.xml
+            echo "Creating vector icon..."
+            cat > app/src/main/res/drawable/ic_launcher_background.xml << 'ICONEOF'
+<?xml version="1.0" encoding="utf-8"?>
+<shape xmlns:android="http://schemas.android.com/apk/res/android" android:shape="rectangle">
+    <solid android:color="#6366F1"/>
+</shape>
+ICONEOF
+            cat > app/src/main/res/drawable/ic_launcher_foreground.xml << 'FGEOF'
+<?xml version="1.0" encoding="utf-8"?>
+<vector xmlns:android="http://schemas.android.com/apk/res/android"
+    android:width="108dp" android:height="108dp" android:viewportWidth="108" android:viewportHeight="108">
+    <path android:fillColor="#FFFFFF" android:pathData="M54,30 L78,54 L54,78 L30,54 Z"/>
+</vector>
+FGEOF
+            ICON_REF="@drawable/ic_launcher_background"
           fi
           
-          cat > app/src/main/res/values/colors.xml << 'EOF'
-          <?xml version="1.0" encoding="utf-8"?>
-          <resources><color name="colorPrimary">#6366F1</color></resources>
-          EOF
-          
+          cat > app/src/main/res/values/colors.xml << 'COLORSEOF'
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <color name="colorPrimary">#6366F1</color>
+    <color name="colorPrimaryDark">#4F46E5</color>
+    <color name="colorAccent">#818CF8</color>
+    <color name="white">#FFFFFF</color>
+    <color name="black">#000000</color>
+</resources>
+COLORSEOF
+
+          cat > app/src/main/res/values/strings.xml << STRINGSEOF
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="app_name">${{ env.APP_NAME }}</string>
+</resources>
+STRINGSEOF
+
+          cat > app/src/main/res/values/themes.xml << 'THEMESEOF'
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <style name="Theme.App" parent="android:Theme.Material.Light.NoActionBar">
+        <item name="android:statusBarColor">@color/colorPrimary</item>
+        <item name="android:navigationBarColor">@color/colorPrimary</item>
+        <item name="android:windowBackground">@color/white</item>
+    </style>
+    <style name="Theme.App.SplashScreen" parent="Theme.App">
+        <item name="android:windowBackground">@color/colorPrimary</item>
+    </style>
+</resources>
+THEMESEOF
+
+          cat > app/src/main/res/values-night/themes.xml << 'NIGHTEOF'
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <style name="Theme.App" parent="android:Theme.Material.NoActionBar">
+        <item name="android:statusBarColor">@color/colorPrimaryDark</item>
+        <item name="android:navigationBarColor">@color/colorPrimaryDark</item>
+        <item name="android:windowBackground">@color/black</item>
+    </style>
+</resources>
+NIGHTEOF
+
+          cat > app/src/main/res/xml/network_security_config.xml << 'NETEOF'
+<?xml version="1.0" encoding="utf-8"?>
+<network-security-config>
+    <base-config cleartextTrafficPermitted="true">
+        <trust-anchors>
+            <certificates src="system" />
+        </trust-anchors>
+    </base-config>
+</network-security-config>
+NETEOF
+
           cat > app/src/main/java/$PKG_PATH/MainActivity.java << JAVAEOF
-          package $PKG;
-          import android.app.Activity;
-          import android.os.Bundle;
-          import android.webkit.*;
-          import android.view.*;
-          import android.net.Uri;
-          import android.content.Intent;
-          public class MainActivity extends Activity {
-            private WebView webView;
-            @Override protected void onCreate(Bundle savedInstanceState) {
-              super.onCreate(savedInstanceState);
-              requestWindowFeature(Window.FEATURE_NO_TITLE);
-              getWindow().setFlags(WindowManager.LayoutParams.FLAG_FULLSCREEN, WindowManager.LayoutParams.FLAG_FULLSCREEN);
-              webView = new WebView(this);
-              setContentView(webView);
-              WebSettings s = webView.getSettings();
-              s.setJavaScriptEnabled(true);
-              s.setDomStorageEnabled(true);
-              s.setAllowFileAccess(true);
-              s.setAllowContentAccess(true);
-              s.setAllowFileAccessFromFileURLs(true);
-              s.setAllowUniversalAccessFromFileURLs(true);
-              s.setMixedContentMode(WebSettings.MIXED_CONTENT_ALWAYS_ALLOW);
-              s.setCacheMode(WebSettings.LOAD_NO_CACHE);
-              s.setDatabaseEnabled(true);
-              s.setMediaPlaybackRequiresUserGesture(false);
-              s.setUseWideViewPort(true);
-              s.setLoadWithOverviewMode(true);
-              webView.setWebViewClient(new WebViewClient() {
-                @Override public boolean shouldOverrideUrlLoading(WebView v, WebResourceRequest r) {
-                  String url = r.getUrl().toString();
-                  if (url.startsWith("http://") || url.startsWith("https://")) {
+package $PKG;
+
+import android.app.Activity;
+import android.os.Bundle;
+import android.webkit.*;
+import android.view.*;
+import android.net.Uri;
+import android.content.Intent;
+import android.graphics.Color;
+import android.os.Build;
+
+public class MainActivity extends Activity {
+    private WebView webView;
+
+    @Override
+    protected void onCreate(Bundle savedInstanceState) {
+        super.onCreate(savedInstanceState);
+        
+        requestWindowFeature(Window.FEATURE_NO_TITLE);
+        getWindow().setFlags(
+            WindowManager.LayoutParams.FLAG_FULLSCREEN,
+            WindowManager.LayoutParams.FLAG_FULLSCREEN
+        );
+        
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.LOLLIPOP) {
+            getWindow().setStatusBarColor(Color.TRANSPARENT);
+            getWindow().setNavigationBarColor(Color.TRANSPARENT);
+        }
+        
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.P) {
+            getWindow().getAttributes().layoutInDisplayCutoutMode = 
+                WindowManager.LayoutParams.LAYOUT_IN_DISPLAY_CUTOUT_MODE_SHORT_EDGES;
+        }
+
+        webView = new WebView(this);
+        setContentView(webView);
+
+        WebSettings settings = webView.getSettings();
+        settings.setJavaScriptEnabled(true);
+        settings.setDomStorageEnabled(true);
+        settings.setDatabaseEnabled(true);
+        settings.setAllowFileAccess(true);
+        settings.setAllowContentAccess(true);
+        settings.setAllowFileAccessFromFileURLs(true);
+        settings.setAllowUniversalAccessFromFileURLs(true);
+        settings.setMixedContentMode(WebSettings.MIXED_CONTENT_ALWAYS_ALLOW);
+        settings.setCacheMode(WebSettings.LOAD_DEFAULT);
+        settings.setMediaPlaybackRequiresUserGesture(false);
+        settings.setUseWideViewPort(true);
+        settings.setLoadWithOverviewMode(true);
+        settings.setSupportZoom(false);
+        settings.setBuiltInZoomControls(false);
+        settings.setDisplayZoomControls(false);
+        settings.setTextZoom(100);
+        
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
+            settings.setSafeBrowsingEnabled(false);
+        }
+
+        webView.setWebViewClient(new WebViewClient() {
+            @Override
+            public boolean shouldOverrideUrlLoading(WebView view, WebResourceRequest request) {
+                String url = request.getUrl().toString();
+                if (url.startsWith("http://") || url.startsWith("https://")) {
                     if (!url.contains("localhost") && !url.contains("127.0.0.1")) {
-                      startActivity(new Intent(Intent.ACTION_VIEW, Uri.parse(url)));
-                      return true;
+                        startActivity(new Intent(Intent.ACTION_VIEW, Uri.parse(url)));
+                        return true;
                     }
-                  }
-                  return false;
                 }
-              });
-              webView.setWebChromeClient(new WebChromeClient());
-              webView.loadUrl("file:///android_asset/www/index.html");
+                return false;
             }
-            @Override public void onBackPressed() {
-              if (webView != null && webView.canGoBack()) { webView.goBack(); } else { super.onBackPressed(); }
+            
+            @Override
+            public void onPageFinished(WebView view, String url) {
+                super.onPageFinished(view, url);
             }
-          }
-          JAVAEOF
-          
+        });
+
+        webView.setWebChromeClient(new WebChromeClient() {
+            @Override
+            public boolean onConsoleMessage(ConsoleMessage consoleMessage) {
+                return true;
+            }
+        });
+
+        webView.setBackgroundColor(Color.TRANSPARENT);
+        webView.setLayerType(View.LAYER_TYPE_HARDWARE, null);
+        
+        webView.loadUrl("file:///android_asset/www/index.html");
+    }
+
+    @Override
+    public void onBackPressed() {
+        if (webView != null && webView.canGoBack()) {
+            webView.goBack();
+        } else {
+            super.onBackPressed();
+        }
+    }
+    
+    @Override
+    protected void onResume() {
+        super.onResume();
+        if (webView != null) {
+            webView.onResume();
+        }
+    }
+    
+    @Override
+    protected void onPause() {
+        if (webView != null) {
+            webView.onPause();
+        }
+        super.onPause();
+    }
+    
+    @Override
+    protected void onDestroy() {
+        if (webView != null) {
+            webView.destroy();
+        }
+        super.onDestroy();
+    }
+}
+JAVAEOF
+
           cat > app/src/main/AndroidManifest.xml << MANIFESTEOF
-          <?xml version="1.0" encoding="utf-8"?>
-          <manifest xmlns:android="http://schemas.android.com/apk/res/android" package="$PKG">
-            <uses-permission android:name="android.permission.INTERNET"/>
-            <uses-permission android:name="android.permission.ACCESS_NETWORK_STATE"/>
-            <application 
-              android:label="${{ env.APP_NAME }}" 
-              android:icon="@mipmap/ic_launcher"
-              android:usesCleartextTraffic="true"
-              android:hardwareAccelerated="true"
-              android:requestLegacyExternalStorage="true">
-              <activity android:name=".MainActivity" android:exported="true" android:configChanges="orientation|screenSize|keyboard|keyboardHidden" android:windowSoftInputMode="adjustResize">
-                <intent-filter>
-                  <action android:name="android.intent.action.MAIN"/>
-                  <category android:name="android.intent.category.LAUNCHER"/>
-                </intent-filter>
-              </activity>
-            </application>
-          </manifest>
-          MANIFESTEOF
-          
-          if [ ! -f "app/src/main/res/mipmap-hdpi/ic_launcher.png" ]; then
-            sed -i 's|android:icon="@mipmap/ic_launcher"|android:icon="@drawable/ic_launcher"|g' app/src/main/AndroidManifest.xml
-          fi
-          
-          cat > app/build.gradle << GRADLEEOF
-          plugins { id 'com.android.application' }
-          android {
-            namespace '$PKG'
-            compileSdk 34
-            defaultConfig {
-              applicationId "$PKG"
-              minSdk 21
-              targetSdk 34
-              versionCode 1
-              versionName "1.0"
-            }
-            buildTypes { 
-              debug { minifyEnabled false; debuggable true } 
-              release { minifyEnabled false }
-            }
-            compileOptions {
-              sourceCompatibility JavaVersion.VERSION_17
-              targetCompatibility JavaVersion.VERSION_17
-            }
-          }
-          GRADLEEOF
-          
+<?xml version="1.0" encoding="utf-8"?>
+<manifest xmlns:android="http://schemas.android.com/apk/res/android"
+    package="$PKG">
+
+    <uses-permission android:name="android.permission.INTERNET" />
+    <uses-permission android:name="android.permission.ACCESS_NETWORK_STATE" />
+    <uses-permission android:name="android.permission.ACCESS_WIFI_STATE" />
+    <uses-permission android:name="android.permission.WRITE_EXTERNAL_STORAGE" android:maxSdkVersion="28" />
+    <uses-permission android:name="android.permission.READ_EXTERNAL_STORAGE" android:maxSdkVersion="32" />
+
+    <application
+        android:label="@string/app_name"
+        android:icon="$ICON_REF"
+        android:roundIcon="$ICON_REF"
+        android:theme="@style/Theme.App"
+        android:usesCleartextTraffic="true"
+        android:hardwareAccelerated="true"
+        android:largeHeap="true"
+        android:networkSecurityConfig="@xml/network_security_config"
+        android:requestLegacyExternalStorage="true"
+        android:supportsRtl="true"
+        android:allowBackup="true">
+
+        <activity
+            android:name=".MainActivity"
+            android:exported="true"
+            android:launchMode="singleTask"
+            android:screenOrientation="unspecified"
+            android:configChanges="orientation|screenSize|screenLayout|keyboardHidden|keyboard|navigation|uiMode"
+            android:windowSoftInputMode="adjustResize">
+            <intent-filter>
+                <action android:name="android.intent.action.MAIN" />
+                <category android:name="android.intent.category.LAUNCHER" />
+            </intent-filter>
+        </activity>
+
+    </application>
+</manifest>
+MANIFESTEOF
+
+          cat > app/build.gradle << APPGRADLEEOF
+plugins {
+    id 'com.android.application'
+}
+
+android {
+    namespace '$PKG'
+    compileSdk 34
+
+    defaultConfig {
+        applicationId "$PKG"
+        minSdk 21
+        targetSdk 34
+        versionCode 1
+        versionName "1.0.0"
+        
+        ndk {
+            abiFilters 'armeabi-v7a', 'arm64-v8a', 'x86', 'x86_64'
+        }
+    }
+
+    buildTypes {
+        debug {
+            minifyEnabled false
+            debuggable true
+        }
+        release {
+            minifyEnabled true
+            shrinkResources true
+            proguardFiles getDefaultProguardFile('proguard-android-optimize.txt'), 'proguard-rules.pro'
+        }
+    }
+
+    compileOptions {
+        sourceCompatibility JavaVersion.VERSION_17
+        targetCompatibility JavaVersion.VERSION_17
+    }
+
+    packagingOptions {
+        resources {
+            excludes += '/META-INF/{AL2.0,LGPL2.1}'
+        }
+    }
+
+    aaptOptions {
+        noCompress 'json', 'js', 'css', 'html', 'htm', 'svg', 'woff', 'woff2', 'ttf', 'eot', 'otf'
+    }
+
+    sourceSets {
+        main {
+            assets.srcDirs = ['src/main/assets']
+        }
+    }
+}
+
+dependencies {
+    implementation 'androidx.appcompat:appcompat:1.6.1'
+    implementation 'androidx.webkit:webkit:1.8.0'
+}
+APPGRADLEEOF
+
+          cat > app/proguard-rules.pro << 'PROGUARDEOF'
+-keepattributes *Annotation*
+-keepclassmembers class * {
+    @android.webkit.JavascriptInterface <methods>;
+}
+-keep class android.webkit.** { *; }
+-dontwarn android.webkit.**
+PROGUARDEOF
+
           cat > settings.gradle << 'SETTINGSEOF'
-          pluginManagement { repositories { google(); mavenCentral(); gradlePluginPortal() } }
-          dependencyResolutionManagement { repositoriesMode.set(RepositoriesMode.FAIL_ON_PROJECT_REPOS); repositories { google(); mavenCentral() } }
-          include ':app'
-          SETTINGSEOF
-          
-          echo "plugins { id 'com.android.application' version '8.2.0' apply false }" > build.gradle
-          printf "android.useAndroidX=true\norg.gradle.jvmargs=-Xmx4096m\norg.gradle.parallel=true" > gradle.properties
-          
-          echo "=== Copied web assets ==="
-          ls -la app/src/main/assets/www/ | head -10
-          echo "=== Checking index.html ==="
-          head -20 app/src/main/assets/www/index.html || echo "No index.html found!"
+pluginManagement {
+    repositories {
+        google()
+        mavenCentral()
+        gradlePluginPortal()
+    }
+}
+
+dependencyResolutionManagement {
+    repositoriesMode.set(RepositoriesMode.FAIL_ON_PROJECT_REPOS)
+    repositories {
+        google()
+        mavenCentral()
+    }
+}
+
+rootProject.name = "app"
+include ':app'
+SETTINGSEOF
+
+          cat > build.gradle << 'ROOTGRADLEEOF'
+plugins {
+    id 'com.android.application' version '8.2.0' apply false
+}
+
+task clean(type: Delete) {
+    delete rootProject.buildDir
+}
+ROOTGRADLEEOF
+
+          cat > gradle.properties << 'PROPSEOF'
+android.useAndroidX=true
+android.enableJetifier=true
+org.gradle.jvmargs=-Xmx4096m -XX:+HeapDumpOnOutOfMemoryError -Dfile.encoding=UTF-8
+org.gradle.parallel=true
+org.gradle.caching=true
+org.gradle.configureondemand=true
+android.defaults.buildfeatures.buildconfig=true
+PROPSEOF
+
+          echo "=== Final Android project structure ==="
+          find app -type f | head -30
+          echo "=== Assets in www folder ==="
+          ls -la app/src/main/assets/www/
+          echo "=== Total asset size ==="
+          du -sh app/src/main/assets/
 
       - name: Setup Gradle
         if: steps.detect.outputs.type == 'web'
+        uses: gradle/actions/setup-gradle@v3
+        with:
+          gradle-version: 8.5
+
+      - name: Create Gradle wrapper
+        if: steps.detect.outputs.type == 'web'
         run: |
-          curl -sL "https://services.gradle.org/distributions/gradle-8.5-bin.zip" -o gradle.zip
-          unzip -q gradle.zip
-          ./gradle-8.5/bin/gradle wrapper --gradle-version 8.5
+          gradle wrapper --gradle-version 8.5
           chmod +x gradlew
 
       - name: Build APK
         run: |
           chmod +x ./gradlew 2>/dev/null || true
-          ./gradlew assembleDebug --no-daemon --info
+          echo "=== Starting Gradle build ==="
+          ./gradlew assembleDebug --no-daemon --info --stacktrace
+          
+          echo "=== Finding built APKs ==="
+          find . -name "*.apk" -type f
+          
           mkdir -p output-apk
           find . -name "*.apk" -exec cp {} output-apk/ \;
-          echo "=== Built APKs ==="
+          
+          echo "=== Final APK info ==="
           ls -la output-apk/
+          for apk in output-apk/*.apk; do
+            echo "APK: $apk - Size: $(du -h "$apk" | cut -f1)"
+          done
 
       - name: Upload APK
         uses: actions/upload-artifact@v4
         with:
           name: app-debug-${{ env.BUILD_ID }}
           path: output-apk/*.apk
-          retention-days: 1
+          retention-days: 7
           if-no-files-found: error
+          compression-level: 0
