@@ -1,5 +1,8 @@
 name: Build Android APK
+
 on:
+  repository_dispatch:
+    types: [build-android-apk]
   workflow_dispatch:
     inputs:
       app_name:
@@ -15,6 +18,11 @@ on:
         required: true
         type: string
 
+env:
+  APP_NAME: ${{ github.event.inputs.app_name || github.event.client_payload.app_name }}
+  PACKAGE_NAME: ${{ github.event.inputs.package_name || github.event.client_payload.package_name }}
+  BUILD_ID: ${{ github.event.inputs.build_id || github.event.client_payload.build_id }}
+
 jobs:
   build:
     runs-on: ubuntu-latest
@@ -22,6 +30,13 @@ jobs:
     steps:
       - name: Checkout code
         uses: actions/checkout@v4
+
+      - name: Debug - Show inputs
+        run: |
+          echo "App Name: ${{ env.APP_NAME }}"
+          echo "Package Name: ${{ env.PACKAGE_NAME }}"
+          echo "Build ID: ${{ env.BUILD_ID }}"
+          echo "Event: ${{ github.event_name }}"
 
       - name: Detect project type
         id: detect
@@ -104,7 +119,7 @@ jobs:
           else
             echo "❌ No build output found, creating placeholder"
             mkdir -p dist
-            echo "<!DOCTYPE html><html><head><meta charset='UTF-8'><meta name='viewport' content='width=device-width,initial-scale=1'><title>${{ inputs.app_name }}</title></head><body><h1>Build Error</h1><p>Web build failed. Please check your project configuration.</p></body></html>" > dist/index.html
+            echo "<!DOCTYPE html><html><head><meta charset='UTF-8'><meta name='viewport' content='width=device-width,initial-scale=1'><title>${{ env.APP_NAME }}</title></head><body><h1>Build Error</h1><p>Web build failed. Please check your project configuration.</p></body></html>" > dist/index.html
             echo "folder=dist" >> $GITHUB_OUTPUT
           fi
 
@@ -114,7 +129,7 @@ jobs:
         uses: nicoulaj/nicoulaj-web-to-apk-action@master
         with:
           build-folder-path: ${{ steps.build-folder.outputs.folder }}
-          app-name: ${{ inputs.app_name }}
+          app-name: ${{ env.APP_NAME }}
           output-folder-path: 'output-apk'
         continue-on-error: true
 
@@ -124,7 +139,7 @@ jobs:
           echo "=== Manual APK Build (Fallback) ==="
           
           # Create Android project structure
-          mkdir -p apk-project/app/src/main/java/$(echo "${{ inputs.package_name }}" | tr '.' '/')
+          mkdir -p apk-project/app/src/main/java/$(echo "${{ env.PACKAGE_NAME }}" | tr '.' '/')
           mkdir -p apk-project/app/src/main/res/values
           mkdir -p apk-project/app/src/main/res/drawable
           mkdir -p apk-project/app/src/main/assets/www
@@ -133,7 +148,7 @@ jobs:
           cp -r ${{ steps.build-folder.outputs.folder }}/* apk-project/app/src/main/assets/www/
           
           # Create MainActivity.java
-          PACKAGE_DIR=$(echo "${{ inputs.package_name }}" | tr '.' '/')
+          PACKAGE_DIR=$(echo "${{ env.PACKAGE_NAME }}" | tr '.' '/')
           cat > apk-project/app/src/main/java/$PACKAGE_DIR/MainActivity.java << 'MAINEOF'
 package PLACEHOLDER_PACKAGE;
 import android.app.Activity;
@@ -157,14 +172,14 @@ public class MainActivity extends Activity {
 MAINEOF
           
           # Fix package name in MainActivity
-          sed -i "s/PLACEHOLDER_PACKAGE/${{ inputs.package_name }}/g" apk-project/app/src/main/java/$PACKAGE_DIR/MainActivity.java
+          sed -i "s/PLACEHOLDER_PACKAGE/${{ env.PACKAGE_NAME }}/g" apk-project/app/src/main/java/$PACKAGE_DIR/MainActivity.java
           
           # Create AndroidManifest.xml
           cat > apk-project/app/src/main/AndroidManifest.xml << EOF
 <?xml version="1.0" encoding="utf-8"?>
-<manifest xmlns:android="http://schemas.android.com/apk/res/android" package="${{ inputs.package_name }}">
+<manifest xmlns:android="http://schemas.android.com/apk/res/android" package="${{ env.PACKAGE_NAME }}">
     <uses-permission android:name="android.permission.INTERNET"/>
-    <application android:label="${{ inputs.app_name }}" android:usesCleartextTraffic="true">
+    <application android:label="${{ env.APP_NAME }}" android:usesCleartextTraffic="true">
         <activity android:name=".MainActivity" android:exported="true">
             <intent-filter>
                 <action android:name="android.intent.action.MAIN"/>
@@ -179,10 +194,10 @@ EOF
           cat > apk-project/app/build.gradle << EOF
 plugins { id 'com.android.application' }
 android {
-    namespace '${{ inputs.package_name }}'
+    namespace '${{ env.PACKAGE_NAME }}'
     compileSdk 34
     defaultConfig {
-        applicationId "${{ inputs.package_name }}"
+        applicationId "${{ env.PACKAGE_NAME }}"
         minSdk 21
         targetSdk 34
         versionCode 1
@@ -205,7 +220,7 @@ dependencyResolutionManagement {
     repositoriesMode.set(RepositoriesMode.FAIL_ON_PROJECT_REPOS)
     repositories { google(); mavenCentral() }
 }
-rootProject.name = "${{ inputs.app_name }}"
+rootProject.name = "${{ env.APP_NAME }}"
 include ':app'
 EOF
           
@@ -247,7 +262,7 @@ GRADLEW
           }
           
           mkdir -p ../output-apk
-          find . -name "*.apk" -exec cp {} ../output-apk/ \;
+          find . -name "*.apk" -exec cp {} ../output-apk/ ;
           cd ..
           
           echo "=== APK Build Complete ==="
@@ -258,7 +273,7 @@ GRADLEW
         if: steps.detect.outputs.project_type == 'native'
         run: |
           if [ -f "app/src/main/res/values/strings.xml" ]; then
-            sed -i 's/<string name="app_name">.*<\/string>/<string name="app_name">${{ inputs.app_name }}<\/string>/' app/src/main/res/values/strings.xml
+            sed -i 's/<string name="app_name">.*</string>/<string name="app_name">${{ env.APP_NAME }}</string>/' app/src/main/res/values/strings.xml
           fi
 
       - name: Build APK (Native)
@@ -267,13 +282,13 @@ GRADLEW
           chmod +x ./gradlew
           ./gradlew assembleDebug --no-daemon
           mkdir -p output-apk
-          find . -name "*.apk" -path "*/debug/*" -exec cp {} output-apk/ \;
+          find . -name "*.apk" -path "*/debug/*" -exec cp {} output-apk/ ;
 
       # ========== UPLOAD ARTIFACT ==========
       - name: Find and Upload APK
         uses: actions/upload-artifact@v4
         with:
-          name: app-debug-${{ inputs.build_id }}
+          name: app-debug-${{ env.BUILD_ID }}
           path: |
             output-apk/*.apk
             **/app/build/outputs/apk/debug/*.apk
