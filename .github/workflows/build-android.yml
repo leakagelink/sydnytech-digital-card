@@ -26,35 +26,21 @@ jobs:
       - name: Detect project type
         id: detect
         run: |
+          echo "=== Project Structure ===" 
+          ls -la
           if [ -f "gradlew" ] && ([ -f "app/build.gradle" ] || [ -f "app/build.gradle.kts" ]); then
             echo "project_type=native" >> $GITHUB_OUTPUT
-            echo "Detected Native Android project"
+            echo "✅ Detected Native Android project"
           elif [ -f "package.json" ]; then
             echo "project_type=web" >> $GITHUB_OUTPUT
-            echo "Detected Web/React project - will wrap in WebView"
+            echo "✅ Detected Web/React project - will convert to APK"
+            cat package.json | head -20
           else
             echo "project_type=unknown" >> $GITHUB_OUTPUT
-            echo "Unknown project type"
+            echo "❌ Unknown project type - will try web build anyway"
           fi
 
-      # ========== WEB PROJECT BUILD PATH ==========
-      - name: Setup Node.js (Web projects)
-        if: steps.detect.outputs.project_type == 'web'
-        uses: actions/setup-node@v4
-        with:
-          node-version: '20'
-          cache: 'npm'
-
-      - name: Install dependencies (Web projects)
-        if: steps.detect.outputs.project_type == 'web'
-        run: npm ci || npm install
-
-      - name: Build web app
-        if: steps.detect.outputs.project_type == 'web'
-        run: npm run build
-        env:
-          CI: false
-
+      # ========== JDK & ANDROID SDK SETUP (FOR ALL PROJECT TYPES) ==========
       - name: Set up JDK 17
         uses: actions/setup-java@v4
         with:
@@ -64,234 +50,208 @@ jobs:
       - name: Setup Android SDK
         uses: android-actions/setup-android@v3
 
-      - name: Create Android wrapper project (Web projects)
-        if: steps.detect.outputs.project_type == 'web'
+      # ========== WEB PROJECT BUILD PATH ==========
+      - name: Setup Node.js
+        if: steps.detect.outputs.project_type == 'web' || steps.detect.outputs.project_type == 'unknown'
+        uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+
+      - name: Install dependencies
+        if: steps.detect.outputs.project_type == 'web' || steps.detect.outputs.project_type == 'unknown'
         run: |
-          mkdir -p android-wrapper
-          cd android-wrapper
-          
-          # Create directory structure
-          mkdir -p app/src/main/java/$(echo "${{ inputs.package_name }}" | tr '.' '/')
-          mkdir -p app/src/main/res/layout
-          mkdir -p app/src/main/res/values
-          mkdir -p app/src/main/res/drawable
-          mkdir -p app/src/main/assets/www
-          mkdir -p gradle/wrapper
-          
-          # Copy built web files
-          cp -r ../dist/* app/src/main/assets/www/ 2>/dev/null || cp -r ../build/* app/src/main/assets/www/ 2>/dev/null || cp -r ../.next/static/* app/src/main/assets/www/ 2>/dev/null || echo "Trying alternate build folder..."
-          
-          # If no build output found, try common locations
-          if [ ! -f "app/src/main/assets/www/index.html" ]; then
-            cp -r ../out/* app/src/main/assets/www/ 2>/dev/null || true
+          echo "=== Installing dependencies ==="
+          if [ -f "package-lock.json" ]; then
+            npm ci --legacy-peer-deps || npm install --legacy-peer-deps
+          elif [ -f "yarn.lock" ]; then
+            npm install -g yarn && yarn install
+          elif [ -f "bun.lockb" ]; then
+            npm install -g bun && bun install
+          else
+            npm install --legacy-peer-deps
           fi
-          
-          # Create index.html if still not found (fallback with iframe)
-          if [ ! -f "app/src/main/assets/www/index.html" ]; then
-            # Get the repo URL from git remote
-            REPO_URL=$(cd .. && git config --get remote.origin.url | sed 's/git@github.com:/https:\/\/github.com\//' | sed 's/.git$//')
-            # Extract username and repo name
-            REPO_PATH=$(echo $REPO_URL | sed 's/https:\/\/github.com\///')
-            GITHUB_PAGES_URL="https://$(echo $REPO_PATH | cut -d'/' -f1).github.io/$(echo $REPO_PATH | cut -d'/' -f2)/"
-            
-            echo "<!DOCTYPE html><html><head><meta charset='UTF-8'><meta name='viewport' content='width=device-width,initial-scale=1'><title>${{ inputs.app_name }}</title><style>*{margin:0;padding:0}html,body,iframe{width:100%;height:100%;border:none}</style></head><body><iframe src='$GITHUB_PAGES_URL'></iframe></body></html>" > app/src/main/assets/www/index.html
+
+      - name: Build web app
+        if: steps.detect.outputs.project_type == 'web' || steps.detect.outputs.project_type == 'unknown'
+        run: |
+          echo "=== Building web app ==="
+          npm run build || echo "Build command failed, checking for pre-built files..."
+          echo "=== Build output ==="
+          ls -la dist/ 2>/dev/null || ls -la build/ 2>/dev/null || ls -la out/ 2>/dev/null || echo "No standard build folder found"
+        env:
+          CI: false
+          NODE_ENV: production
+
+      - name: Determine build folder
+        if: steps.detect.outputs.project_type == 'web' || steps.detect.outputs.project_type == 'unknown'
+        id: build-folder
+        run: |
+          if [ -d "dist" ] && [ -f "dist/index.html" ]; then
+            echo "folder=dist" >> $GITHUB_OUTPUT
+            echo "✅ Using dist folder"
+          elif [ -d "build" ] && [ -f "build/index.html" ]; then
+            echo "folder=build" >> $GITHUB_OUTPUT
+            echo "✅ Using build folder"
+          elif [ -d "out" ] && [ -f "out/index.html" ]; then
+            echo "folder=out" >> $GITHUB_OUTPUT
+            echo "✅ Using out folder"
+          elif [ -d ".next" ]; then
+            mkdir -p dist
+            cp -r .next/static dist/ 2>/dev/null || true
+            cp -r public/* dist/ 2>/dev/null || true
+            echo "folder=dist" >> $GITHUB_OUTPUT
+            echo "✅ Using Next.js output"
+          else
+            echo "❌ No build output found, creating placeholder"
+            mkdir -p dist
+            echo "<!DOCTYPE html><html><head><meta charset='UTF-8'><meta name='viewport' content='width=device-width,initial-scale=1'><title>${{ inputs.app_name }}</title></head><body><h1>Build Error</h1><p>Web build failed. Please check your project configuration.</p></body></html>" > dist/index.html
+            echo "folder=dist" >> $GITHUB_OUTPUT
           fi
+
+      - name: Convert Web to APK
+        id: web-to-apk
+        if: steps.detect.outputs.project_type == 'web' || steps.detect.outputs.project_type == 'unknown'
+        uses: nicoulaj/nicoulaj-web-to-apk-action@master
+        with:
+          build-folder-path: ${{ steps.build-folder.outputs.folder }}
+          app-name: ${{ inputs.app_name }}
+          output-folder-path: 'output-apk'
+        continue-on-error: true
+
+      - name: Manual APK Build (Fallback)
+        if: (steps.detect.outputs.project_type == 'web' || steps.detect.outputs.project_type == 'unknown') && steps.web-to-apk.outcome == 'failure'
+        run: |
+          echo "=== Manual APK Build (Fallback) ==="
+          
+          # Create Android project structure
+          mkdir -p apk-project/app/src/main/java/$(echo "${{ inputs.package_name }}" | tr '.' '/')
+          mkdir -p apk-project/app/src/main/res/values
+          mkdir -p apk-project/app/src/main/res/drawable
+          mkdir -p apk-project/app/src/main/assets/www
+          
+          # Copy web files
+          cp -r ${{ steps.build-folder.outputs.folder }}/* apk-project/app/src/main/assets/www/
           
           # Create MainActivity.java
-          PACKAGE_PATH=$(echo "${{ inputs.package_name }}" | tr '.' '/')
-          cat > app/src/main/java/$PACKAGE_PATH/MainActivity.java << 'MAINACTIVITY'
-          package ${{ inputs.package_name }};
+          PACKAGE_DIR=$(echo "${{ inputs.package_name }}" | tr '.' '/')
+          cat > apk-project/app/src/main/java/$PACKAGE_DIR/MainActivity.java << 'MAINEOF'
+package PLACEHOLDER_PACKAGE;
+import android.app.Activity;
+import android.os.Bundle;
+import android.webkit.WebView;
+import android.webkit.WebSettings;
+import android.webkit.WebViewClient;
+public class MainActivity extends Activity {
+    @Override
+    protected void onCreate(Bundle savedInstanceState) {
+        super.onCreate(savedInstanceState);
+        WebView webView = new WebView(this);
+        setContentView(webView);
+        WebSettings settings = webView.getSettings();
+        settings.setJavaScriptEnabled(true);
+        settings.setDomStorageEnabled(true);
+        webView.setWebViewClient(new WebViewClient());
+        webView.loadUrl("file:///android_asset/www/index.html");
+    }
+}
+MAINEOF
           
-          import android.app.Activity;
-          import android.os.Bundle;
-          import android.webkit.WebView;
-          import android.webkit.WebViewClient;
-          import android.webkit.WebSettings;
-          import android.webkit.WebChromeClient;
-          import android.view.View;
-          import android.view.Window;
-          import android.view.WindowManager;
-          
-          public class MainActivity extends Activity {
-              private WebView webView;
-              
-              @Override
-              protected void onCreate(Bundle savedInstanceState) {
-                  super.onCreate(savedInstanceState);
-                  
-                  requestWindowFeature(Window.FEATURE_NO_TITLE);
-                  getWindow().setFlags(WindowManager.LayoutParams.FLAG_FULLSCREEN, WindowManager.LayoutParams.FLAG_FULLSCREEN);
-                  
-                  webView = new WebView(this);
-                  setContentView(webView);
-                  
-                  WebSettings settings = webView.getSettings();
-                  settings.setJavaScriptEnabled(true);
-                  settings.setDomStorageEnabled(true);
-                  settings.setAllowFileAccess(true);
-                  settings.setAllowContentAccess(true);
-                  settings.setCacheMode(WebSettings.LOAD_DEFAULT);
-                  settings.setMixedContentMode(WebSettings.MIXED_CONTENT_ALWAYS_ALLOW);
-                  
-                  webView.setWebViewClient(new WebViewClient());
-                  webView.setWebChromeClient(new WebChromeClient());
-                  webView.loadUrl("file:///android_asset/www/index.html");
-              }
-              
-              @Override
-              public void onBackPressed() {
-                  if (webView.canGoBack()) {
-                      webView.goBack();
-                  } else {
-                      super.onBackPressed();
-                  }
-              }
-          }
-          MAINACTIVITY
-          
-          # Fix the package declaration (the heredoc escapes it wrong)
-          sed -i "s/package .*inputs.package_name.*/package ${{ inputs.package_name }};/" app/src/main/java/$PACKAGE_PATH/MainActivity.java
+          # Fix package name in MainActivity
+          sed -i "s/PLACEHOLDER_PACKAGE/${{ inputs.package_name }}/g" apk-project/app/src/main/java/$PACKAGE_DIR/MainActivity.java
           
           # Create AndroidManifest.xml
-          cat > app/src/main/AndroidManifest.xml << MANIFEST
-          <?xml version="1.0" encoding="utf-8"?>
-          <manifest xmlns:android="http://schemas.android.com/apk/res/android"
-              package="${{ inputs.package_name }}">
-              
-              <uses-permission android:name="android.permission.INTERNET" />
-              <uses-permission android:name="android.permission.ACCESS_NETWORK_STATE" />
-              
-              <application
-                  android:allowBackup="true"
-                  android:icon="@drawable/ic_launcher"
-                  android:label="${{ inputs.app_name }}"
-                  android:theme="@android:style/Theme.NoTitleBar.Fullscreen"
-                  android:usesCleartextTraffic="true">
-                  
-                  <activity
-                      android:name=".MainActivity"
-                      android:exported="true"
-                      android:configChanges="orientation|screenSize|keyboardHidden">
-                      <intent-filter>
-                          <action android:name="android.intent.action.MAIN" />
-                          <category android:name="android.intent.category.LAUNCHER" />
-                      </intent-filter>
-                  </activity>
-              </application>
-          </manifest>
-          MANIFEST
-          
-          # Create default launcher icon
-          cat > app/src/main/res/drawable/ic_launcher.xml << ICON
-          <?xml version="1.0" encoding="utf-8"?>
-          <vector xmlns:android="http://schemas.android.com/apk/res/android"
-              android:width="108dp"
-              android:height="108dp"
-              android:viewportWidth="108"
-              android:viewportHeight="108">
-              <path
-                  android:fillColor="#3DDC84"
-                  android:pathData="M54,54m-50,0a50,50 0,1 1,100 0a50,50 0,1 1,-100 0"/>
-              <path
-                  android:fillColor="#FFFFFF"
-                  android:pathData="M34,44l40,0l0,20l-40,0z"/>
-          </vector>
-          ICON
+          cat > apk-project/app/src/main/AndroidManifest.xml << EOF
+<?xml version="1.0" encoding="utf-8"?>
+<manifest xmlns:android="http://schemas.android.com/apk/res/android" package="${{ inputs.package_name }}">
+    <uses-permission android:name="android.permission.INTERNET"/>
+    <application android:label="${{ inputs.app_name }}" android:usesCleartextTraffic="true">
+        <activity android:name=".MainActivity" android:exported="true">
+            <intent-filter>
+                <action android:name="android.intent.action.MAIN"/>
+                <category android:name="android.intent.category.LAUNCHER"/>
+            </intent-filter>
+        </activity>
+    </application>
+</manifest>
+EOF
           
           # Create app/build.gradle
-          cat > app/build.gradle << BUILDGRADLE
-          plugins {
-              id 'com.android.application'
-          }
-          
-          android {
-              namespace '${{ inputs.package_name }}'
-              compileSdk 34
-              
-              defaultConfig {
-                  applicationId "${{ inputs.package_name }}"
-                  minSdk 24
-                  targetSdk 34
-                  versionCode 1
-                  versionName "1.0"
-              }
-              
-              buildTypes {
-                  release {
-                      minifyEnabled false
-                  }
-                  debug {
-                      minifyEnabled false
-                  }
-              }
-              
-              compileOptions {
-                  sourceCompatibility JavaVersion.VERSION_17
-                  targetCompatibility JavaVersion.VERSION_17
-              }
-          }
-          
-          dependencies {
-              implementation 'androidx.appcompat:appcompat:1.6.1'
-              implementation 'androidx.webkit:webkit:1.8.0'
-          }
-          BUILDGRADLE
+          cat > apk-project/app/build.gradle << EOF
+plugins { id 'com.android.application' }
+android {
+    namespace '${{ inputs.package_name }}'
+    compileSdk 34
+    defaultConfig {
+        applicationId "${{ inputs.package_name }}"
+        minSdk 21
+        targetSdk 34
+        versionCode 1
+        versionName "1.0"
+    }
+    buildTypes { debug { minifyEnabled false } }
+    compileOptions {
+        sourceCompatibility JavaVersion.VERSION_17
+        targetCompatibility JavaVersion.VERSION_17
+    }
+}
+EOF
           
           # Create settings.gradle
-          cat > settings.gradle << SETTINGS
-          pluginManagement {
-              repositories {
-                  google()
-                  mavenCentral()
-                  gradlePluginPortal()
-              }
-          }
-          dependencyResolutionManagement {
-              repositoriesMode.set(RepositoriesMode.FAIL_ON_PROJECT_REPOS)
-              repositories {
-                  google()
-                  mavenCentral()
-              }
-          }
-          rootProject.name = "${{ inputs.app_name }}"
-          include ':app'
-          SETTINGS
+          cat > apk-project/settings.gradle << EOF
+pluginManagement {
+    repositories { google(); mavenCentral(); gradlePluginPortal() }
+}
+dependencyResolutionManagement {
+    repositoriesMode.set(RepositoriesMode.FAIL_ON_PROJECT_REPOS)
+    repositories { google(); mavenCentral() }
+}
+rootProject.name = "${{ inputs.app_name }}"
+include ':app'
+EOF
           
           # Create root build.gradle
-          cat > build.gradle << ROOTGRADLE
-          plugins {
-              id 'com.android.application' version '8.2.0' apply false
-          }
-          ROOTGRADLE
+          cat > apk-project/build.gradle << EOF
+plugins { id 'com.android.application' version '8.2.0' apply false }
+EOF
           
           # Create gradle.properties
-          cat > gradle.properties << GRADLEPROPS
-          android.useAndroidX=true
-          android.enableJetifier=true
-          org.gradle.jvmargs=-Xmx2048m -Dfile.encoding=UTF-8
-          GRADLEPROPS
+          cat > apk-project/gradle.properties << EOF
+android.useAndroidX=true
+org.gradle.jvmargs=-Xmx2048m
+EOF
           
-          # Create gradle wrapper properties
-          cat > gradle/wrapper/gradle-wrapper.properties << WRAPPERPROP
-          distributionBase=GRADLE_USER_HOME
-          distributionPath=wrapper/dists
-          distributionUrl=https\://services.gradle.org/distributions/gradle-8.5-bin.zip
-          zipStoreBase=GRADLE_USER_HOME
-          zipStorePath=wrapper/dists
-          WRAPPERPROP
+          # Create gradle wrapper
+          cd apk-project
+          mkdir -p gradle/wrapper
+          cat > gradle/wrapper/gradle-wrapper.properties << EOF
+distributionBase=GRADLE_USER_HOME
+distributionPath=wrapper/dists
+distributionUrl=https\://services.gradle.org/distributions/gradle-8.5-bin.zip
+zipStoreBase=GRADLE_USER_HOME
+zipStorePath=wrapper/dists
+EOF
           
           # Download and setup gradle wrapper
-          wget -q https://raw.githubusercontent.com/nicoulaj/gradle-wrapper-files/refs/heads/master/gradle/wrapper/gradle-wrapper.jar -O gradle/wrapper/gradle-wrapper.jar
+          curl -sL https://raw.githubusercontent.com/nicoulaj/nicoulaj-web-to-apk-action/master/gradle/wrapper/gradle-wrapper.jar -o gradle/wrapper/gradle-wrapper.jar ||             curl -sL https://services.gradle.org/distributions/gradle-8.5-bin.zip -o gradle.zip && unzip -q gradle.zip && ./gradle-8.5/bin/gradle wrapper
           
           cat > gradlew << 'GRADLEW'
-          #!/bin/sh
-          DIRNAME=$(dirname "$0")
-          exec java -jar "$DIRNAME/gradle/wrapper/gradle-wrapper.jar" "$@"
-          GRADLEW
+#!/bin/sh
+exec java -jar "$(dirname "$0")/gradle/wrapper/gradle-wrapper.jar" "$@"
+GRADLEW
           chmod +x gradlew
           
-          echo "Android wrapper project created successfully"
-          ls -la app/src/main/assets/www/ || echo "No www files yet"
+          # Build APK
+          ./gradlew assembleDebug --no-daemon --stacktrace || {
+            echo "Gradle wrapper failed, using system gradle"
+            gradle assembleDebug --no-daemon --stacktrace
+          }
+          
+          mkdir -p ../output-apk
+          find . -name "*.apk" -exec cp {} ../output-apk/ \;
+          cd ..
+          
+          echo "=== APK Build Complete ==="
+          ls -la output-apk/
 
       # ========== NATIVE ANDROID BUILD PATH ==========
       - name: Update app name (Native)
@@ -301,43 +261,21 @@ jobs:
             sed -i 's/<string name="app_name">.*<\/string>/<string name="app_name">${{ inputs.app_name }}<\/string>/' app/src/main/res/values/strings.xml
           fi
 
-      - name: Update package name (Native)
-        if: steps.detect.outputs.project_type == 'native'
-        run: |
-          OLD_PACKAGE=$(grep -oP 'namespace\s*=?\s*["'"'"']\K[^"'"'"']+' app/build.gradle* 2>/dev/null | head -1 || grep -oP 'applicationId\s*["'"'"']\K[^"'"'"']+' app/build.gradle* 2>/dev/null | head -1)
-          if [ -n "$OLD_PACKAGE" ]; then
-            echo "Changing package from $OLD_PACKAGE to ${{ inputs.package_name }}"
-            find . -name "*.gradle*" -exec sed -i "s/$OLD_PACKAGE/${{ inputs.package_name }}/g" {} \;
-            find . -name "AndroidManifest.xml" -exec sed -i "s/$OLD_PACKAGE/${{ inputs.package_name }}/g" {} \;
-          fi
-
-      # ========== BUILD STEP ==========
       - name: Build APK (Native)
         if: steps.detect.outputs.project_type == 'native'
         run: |
           chmod +x ./gradlew
           ./gradlew assembleDebug --no-daemon
+          mkdir -p output-apk
+          find . -name "*.apk" -path "*/debug/*" -exec cp {} output-apk/ \;
 
-      - name: Build APK (Web wrapper)
-        if: steps.detect.outputs.project_type == 'web'
-        run: |
-          cd android-wrapper
-          chmod +x ./gradlew
-          ./gradlew assembleDebug --no-daemon --stacktrace
-
-      - name: Find APK
-        id: find-apk
-        run: |
-          APK_PATH=$(find . -name "*.apk" -path "*/debug/*" | head -1)
-          if [ -z "$APK_PATH" ]; then
-            APK_PATH=$(find . -name "*.apk" | head -1)
-          fi
-          echo "apk_path=$APK_PATH" >> $GITHUB_OUTPUT
-          echo "Found APK at: $APK_PATH"
-
-      - name: Upload APK artifact
+      # ========== UPLOAD ARTIFACT ==========
+      - name: Find and Upload APK
         uses: actions/upload-artifact@v4
         with:
           name: app-debug-${{ inputs.build_id }}
-          path: ${{ steps.find-apk.outputs.apk_path }}
+          path: |
+            output-apk/*.apk
+            **/app/build/outputs/apk/debug/*.apk
           retention-days: 1
+          if-no-files-found: error
