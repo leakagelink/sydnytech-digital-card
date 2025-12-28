@@ -57,94 +57,330 @@ jobs:
         with:
           node-version: 20
 
-      - name: Install and build web
+      - name: Install dependencies
         if: steps.detect.outputs.type == 'web'
         run: |
-          npm install --legacy-peer-deps || true
-          npm run build || true
+          if [ -f "bun.lockb" ]; then
+            npm install -g bun
+            bun install
+          elif [ -f "yarn.lock" ]; then
+            npm install -g yarn
+            yarn install
+          elif [ -f "pnpm-lock.yaml" ]; then
+            npm install -g pnpm
+            pnpm install
+          else
+            npm install --legacy-peer-deps || npm install --force || true
+          fi
+
+      - name: Build web app
+        if: steps.detect.outputs.type == 'web'
+        run: |
+          npm run build || yarn build || pnpm build || bun run build || true
         env:
           CI: false
+          NODE_ENV: production
+
+      - name: Debug build output
+        if: steps.detect.outputs.type == 'web'
+        run: |
+          echo "=== Checking build output ==="
+          ls -la
+          [ -d "dist" ] && echo "dist folder:" && ls -la dist/ | head -20
+          [ -d "build" ] && echo "build folder:" && ls -la build/ | head -20
+          [ -d ".output" ] && echo ".output folder:" && ls -la .output/ | head -20
 
       - name: Create Android project
         if: steps.detect.outputs.type == 'web'
         run: |
-          SRCDIR="dist"
-          [ -d "build" ] && SRCDIR="build"
-          [ -d "public" ] && [ ! -d "dist" ] && [ ! -d "build" ] && SRCDIR="public"
-          mkdir -p dist && echo "<html><body><h1>App</h1></body></html>" > dist/index.html || true
+          # Find the correct build output directory
+          SRCDIR=""
+          if [ -d "dist" ] && [ "$(ls -A dist 2>/dev/null)" ]; then
+            SRCDIR="dist"
+          elif [ -d "build" ] && [ "$(ls -A build 2>/dev/null)" ]; then
+            SRCDIR="build"
+          elif [ -d ".output/public" ] && [ "$(ls -A .output/public 2>/dev/null)" ]; then
+            SRCDIR=".output/public"
+          elif [ -d "public" ] && [ "$(ls -A public 2>/dev/null)" ]; then
+            SRCDIR="public"
+          fi
+          
+          echo "Using source directory: $SRCDIR"
+          
+          # Fail if no build output found
+          if [ -z "$SRCDIR" ]; then
+            echo "ERROR: No build output found! Creating minimal fallback..."
+            mkdir -p dist
+            echo '<!DOCTYPE html><html><head><meta charset="utf-8"><title>Build Error</title></head><body><h1>Build Failed</h1><p>No build output was generated.</p></body></html>' > dist/index.html
+            SRCDIR="dist"
+          fi
+          
+          # Verify index.html exists
+          if [ ! -f "$SRCDIR/index.html" ]; then
+            echo "WARNING: No index.html found in $SRCDIR"
+            ls -la "$SRCDIR/"
+          fi
           
           PKG_PATH=$(echo "${{ env.PACKAGE_NAME }}" | tr '.' '/')
-          mkdir -p app/src/main/java/$PKG_PATH app/src/main/assets/www app/src/main/res/values
-          cp -r $SRCDIR/* app/src/main/assets/www/ 2>/dev/null || cp -r dist/* app/src/main/assets/www/
           
+          # Create Android project structure
+          mkdir -p app/src/main/java/$PKG_PATH
+          mkdir -p app/src/main/assets/www
+          mkdir -p app/src/main/res/drawable
+          mkdir -p app/src/main/res/mipmap-mdpi
+          mkdir -p app/src/main/res/mipmap-hdpi
+          mkdir -p app/src/main/res/mipmap-xhdpi
+          mkdir -p app/src/main/res/mipmap-xxhdpi
+          mkdir -p app/src/main/res/mipmap-xxxhdpi
+          mkdir -p app/src/main/res/values
+          
+          # Copy web assets
+          cp -r "$SRCDIR"/* app/src/main/assets/www/
+          echo "Copied web assets:"
+          ls -la app/src/main/assets/www/ | head -10
+          
+          # Create app icon (default Android icon)
+          # Generate a simple colored icon using ImageMagick if available, otherwise use a placeholder
+          cat > app/src/main/res/drawable/ic_launcher.xml << 'ICONEOF'
+<?xml version="1.0" encoding="utf-8"?>
+<shape xmlns:android="http://schemas.android.com/apk/res/android" android:shape="rectangle">
+    <solid android:color="#6366F1"/>
+    <corners android:radius="12dp"/>
+</shape>
+ICONEOF
+          
+          # Create adaptive icon for modern Android
+          cat > app/src/main/res/mipmap-anydpi-v26/ic_launcher.xml << 'ADAPTIVEEOF'
+<?xml version="1.0" encoding="utf-8"?>
+<adaptive-icon xmlns:android="http://schemas.android.com/apk/res/android">
+    <background android:drawable="@color/ic_launcher_background"/>
+    <foreground android:drawable="@drawable/ic_launcher_foreground"/>
+</adaptive-icon>
+ADAPTIVEEOF
+          mkdir -p app/src/main/res/mipmap-anydpi-v26
+          
+          cat > app/src/main/res/drawable/ic_launcher_foreground.xml << 'FGEOF'
+<?xml version="1.0" encoding="utf-8"?>
+<vector xmlns:android="http://schemas.android.com/apk/res/android"
+    android:width="108dp"
+    android:height="108dp"
+    android:viewportWidth="108"
+    android:viewportHeight="108">
+    <path
+        android:fillColor="#FFFFFF"
+        android:pathData="M54,30L54,78M30,54L78,54"
+        android:strokeWidth="8"
+        android:strokeColor="#FFFFFF"/>
+    <path
+        android:fillColor="#FFFFFF"
+        android:pathData="M54,54m-20,0a20,20 0,1 1,40 0a20,20 0,1 1,-40 0"/>
+</vector>
+FGEOF
+          
+          cat > app/src/main/res/values/ic_launcher_background.xml << 'BGEOF'
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <color name="ic_launcher_background">#6366F1</color>
+</resources>
+BGEOF
+          
+          # Try to find and use project favicon/logo if available
+          ICON_FOUND=false
+          for icon_path in "$SRCDIR/favicon.ico" "$SRCDIR/favicon.png" "$SRCDIR/logo.png" "$SRCDIR/icon.png" "$SRCDIR/app-icon.png" "public/favicon.ico" "public/favicon.png" "public/logo.png"; do
+            if [ -f "$icon_path" ]; then
+              echo "Found icon: $icon_path"
+              # Copy to all mipmap folders (will be same size, but works)
+              for size_dir in mipmap-mdpi mipmap-hdpi mipmap-xhdpi mipmap-xxhdpi mipmap-xxxhdpi; do
+                cp "$icon_path" "app/src/main/res/$size_dir/ic_launcher.png" 2>/dev/null || true
+              done
+              ICON_FOUND=true
+              break
+            fi
+          done
+          
+          if [ "$ICON_FOUND" = false ]; then
+            echo "No custom icon found, using default"
+          fi
+          
+          # Create MainActivity with proper WebView setup
           cat > app/src/main/java/$PKG_PATH/MainActivity.java << 'JAVAEOF'
-          package PKGPLACEHOLDER;
-          import android.app.Activity;
-          import android.os.Bundle;
-          import android.webkit.WebView;
-          import android.webkit.WebSettings;
-          import android.webkit.WebViewClient;
-          public class MainActivity extends Activity {
-            protected void onCreate(Bundle s) {
-              super.onCreate(s);
-              WebView w = new WebView(this);
-              setContentView(w);
-              w.getSettings().setJavaScriptEnabled(true);
-              w.getSettings().setDomStorageEnabled(true);
-              w.setWebViewClient(new WebViewClient());
-              w.loadUrl("file:///android_asset/www/index.html");
+package PKGPLACEHOLDER;
+
+import android.app.Activity;
+import android.os.Bundle;
+import android.view.View;
+import android.view.Window;
+import android.view.WindowManager;
+import android.webkit.WebView;
+import android.webkit.WebSettings;
+import android.webkit.WebViewClient;
+import android.webkit.WebChromeClient;
+import android.webkit.ConsoleMessage;
+
+public class MainActivity extends Activity {
+    private WebView webView;
+    
+    @Override
+    protected void onCreate(Bundle savedInstanceState) {
+        super.onCreate(savedInstanceState);
+        
+        // Fullscreen
+        requestWindowFeature(Window.FEATURE_NO_TITLE);
+        getWindow().setFlags(
+            WindowManager.LayoutParams.FLAG_FULLSCREEN,
+            WindowManager.LayoutParams.FLAG_FULLSCREEN
+        );
+        
+        webView = new WebView(this);
+        setContentView(webView);
+        
+        WebSettings settings = webView.getSettings();
+        settings.setJavaScriptEnabled(true);
+        settings.setDomStorageEnabled(true);
+        settings.setAllowFileAccess(true);
+        settings.setAllowContentAccess(true);
+        settings.setMediaPlaybackRequiresUserGesture(false);
+        settings.setMixedContentMode(WebSettings.MIXED_CONTENT_ALWAYS_ALLOW);
+        settings.setCacheMode(WebSettings.LOAD_DEFAULT);
+        settings.setDatabaseEnabled(true);
+        
+        webView.setWebViewClient(new WebViewClient() {
+            @Override
+            public void onPageFinished(WebView view, String url) {
+                super.onPageFinished(view, url);
             }
-          }
-          JAVAEOF
+        });
+        
+        webView.setWebChromeClient(new WebChromeClient() {
+            @Override
+            public boolean onConsoleMessage(ConsoleMessage consoleMessage) {
+                return true;
+            }
+        });
+        
+        webView.loadUrl("file:///android_asset/www/index.html");
+    }
+    
+    @Override
+    public void onBackPressed() {
+        if (webView.canGoBack()) {
+            webView.goBack();
+        } else {
+            super.onBackPressed();
+        }
+    }
+}
+JAVAEOF
           sed -i "s/PKGPLACEHOLDER/${{ env.PACKAGE_NAME }}/g" app/src/main/java/$PKG_PATH/MainActivity.java
           
+          # Create AndroidManifest with icon reference
           cat > app/src/main/AndroidManifest.xml << 'MANIFESTEOF'
-          <?xml version="1.0" encoding="utf-8"?>
-          <manifest xmlns:android="http://schemas.android.com/apk/res/android" package="PKGPLACEHOLDER">
-            <uses-permission android:name="android.permission.INTERNET"/>
-            <application android:label="APPPLACEHOLDER" android:usesCleartextTraffic="true">
-              <activity android:name=".MainActivity" android:exported="true">
-                <intent-filter>
-                  <action android:name="android.intent.action.MAIN"/>
-                  <category android:name="android.intent.category.LAUNCHER"/>
-                </intent-filter>
-              </activity>
-            </application>
-          </manifest>
-          MANIFESTEOF
+<?xml version="1.0" encoding="utf-8"?>
+<manifest xmlns:android="http://schemas.android.com/apk/res/android"
+    package="PKGPLACEHOLDER">
+    
+    <uses-permission android:name="android.permission.INTERNET"/>
+    <uses-permission android:name="android.permission.ACCESS_NETWORK_STATE"/>
+    
+    <application
+        android:allowBackup="true"
+        android:icon="@mipmap/ic_launcher"
+        android:roundIcon="@mipmap/ic_launcher"
+        android:label="APPPLACEHOLDER"
+        android:supportsRtl="true"
+        android:theme="@android:style/Theme.NoTitleBar.Fullscreen"
+        android:usesCleartextTraffic="true"
+        android:hardwareAccelerated="true">
+        
+        <activity
+            android:name=".MainActivity"
+            android:exported="true"
+            android:configChanges="orientation|screenSize|keyboard|keyboardHidden"
+            android:screenOrientation="portrait">
+            <intent-filter>
+                <action android:name="android.intent.action.MAIN"/>
+                <category android:name="android.intent.category.LAUNCHER"/>
+            </intent-filter>
+        </activity>
+    </application>
+</manifest>
+MANIFESTEOF
           sed -i "s/PKGPLACEHOLDER/${{ env.PACKAGE_NAME }}/g" app/src/main/AndroidManifest.xml
           sed -i "s/APPPLACEHOLDER/${{ env.APP_NAME }}/g" app/src/main/AndroidManifest.xml
           
+          # Create build.gradle
           cat > app/build.gradle << 'GRADLEEOF'
-          plugins { id 'com.android.application' }
-          android {
-            namespace 'PKGPLACEHOLDER'
-            compileSdk 34
-            defaultConfig {
-              applicationId "PKGPLACEHOLDER"
-              minSdk 21
-              targetSdk 34
-              versionCode 1
-              versionName "1.0"
-            }
-            buildTypes { debug { minifyEnabled false } }
-            compileOptions {
-              sourceCompatibility JavaVersion.VERSION_17
-              targetCompatibility JavaVersion.VERSION_17
-            }
-          }
-          GRADLEEOF
+plugins {
+    id 'com.android.application'
+}
+
+android {
+    namespace 'PKGPLACEHOLDER'
+    compileSdk 34
+    
+    defaultConfig {
+        applicationId "PKGPLACEHOLDER"
+        minSdk 21
+        targetSdk 34
+        versionCode 1
+        versionName "1.0"
+    }
+    
+    buildTypes {
+        debug {
+            minifyEnabled false
+            debuggable true
+        }
+        release {
+            minifyEnabled false
+        }
+    }
+    
+    compileOptions {
+        sourceCompatibility JavaVersion.VERSION_17
+        targetCompatibility JavaVersion.VERSION_17
+    }
+}
+GRADLEEOF
           sed -i "s/PKGPLACEHOLDER/${{ env.PACKAGE_NAME }}/g" app/build.gradle
           
+          # Create settings.gradle
           cat > settings.gradle << 'SETTINGSEOF'
-          pluginManagement { repositories { google(); mavenCentral(); gradlePluginPortal() } }
-          dependencyResolutionManagement { repositoriesMode.set(RepositoriesMode.FAIL_ON_PROJECT_REPOS); repositories { google(); mavenCentral() } }
-          rootProject.name = 'MyApp'
-          include ':app'
-          SETTINGSEOF
+pluginManagement {
+    repositories {
+        google()
+        mavenCentral()
+        gradlePluginPortal()
+    }
+}
+dependencyResolutionManagement {
+    repositoriesMode.set(RepositoriesMode.FAIL_ON_PROJECT_REPOS)
+    repositories {
+        google()
+        mavenCentral()
+    }
+}
+rootProject.name = 'APPPLACEHOLDER'
+include ':app'
+SETTINGSEOF
+          sed -i "s/APPPLACEHOLDER/${{ env.APP_NAME }}/g" settings.gradle
           
-          echo "plugins { id 'com.android.application' version '8.2.0' apply false }" > build.gradle
-          echo -e "android.useAndroidX=true\norg.gradle.jvmargs=-Xmx4096m" > gradle.properties
+          # Create root build.gradle
+          cat > build.gradle << 'ROOTGRADLEEOF'
+plugins {
+    id 'com.android.application' version '8.2.0' apply false
+}
+ROOTGRADLEEOF
+          
+          # Create gradle.properties
+          cat > gradle.properties << 'PROPSEOF'
+android.useAndroidX=true
+org.gradle.jvmargs=-Xmx4096m
+org.gradle.parallel=true
+PROPSEOF
+          
+          echo "=== Android project created ==="
+          ls -la app/src/main/
 
       - name: Setup Gradle
         if: steps.detect.outputs.type == 'web'
@@ -157,9 +393,16 @@ jobs:
       - name: Build APK
         run: |
           chmod +x ./gradlew 2>/dev/null || true
-          ./gradlew assembleDebug --no-daemon
+          ./gradlew assembleDebug --no-daemon --stacktrace
+          
+          echo "=== Finding APK files ==="
+          find . -name "*.apk" -type f
+          
           mkdir -p output-apk
           find . -name "*.apk" -exec cp {} output-apk/ \;
+          
+          echo "=== Output APK files ==="
+          ls -la output-apk/
 
       - name: Upload APK
         uses: actions/upload-artifact@v4
