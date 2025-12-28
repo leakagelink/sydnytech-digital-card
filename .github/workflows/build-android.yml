@@ -19,9 +19,9 @@ on:
         type: string
 
 env:
-  APP_NAME: ${{ github.event.inputs.app_name || github.event.client_payload.app_name }}
-  PACKAGE_NAME: ${{ github.event.inputs.package_name || github.event.client_payload.package_name }}
-  BUILD_ID: ${{ github.event.inputs.build_id || github.event.client_payload.build_id }}
+  APP_NAME: ${{ github.event.inputs.app_name || github.event.client_payload.app_name || 'MyApp' }}
+  PACKAGE_NAME: ${{ github.event.inputs.package_name || github.event.client_payload.package_name || 'com.example.app' }}
+  BUILD_ID: ${{ github.event.inputs.build_id || github.event.client_payload.build_id || 'manual' }}
 
 jobs:
   build:
@@ -52,10 +52,10 @@ jobs:
             cat package.json | head -20
           else
             echo "project_type=unknown" >> $GITHUB_OUTPUT
-            echo "❌ Unknown project type - will try web build anyway"
+            echo "⚠️ Unknown project type - will try web build anyway"
           fi
 
-      # ========== JDK & ANDROID SDK SETUP (FOR ALL PROJECT TYPES) ==========
+      # ========== JDK & ANDROID SDK SETUP ==========
       - name: Set up JDK 17
         uses: actions/setup-java@v4
         with:
@@ -76,12 +76,15 @@ jobs:
         if: steps.detect.outputs.project_type == 'web' || steps.detect.outputs.project_type == 'unknown'
         run: |
           echo "=== Installing dependencies ==="
-          if [ -f "package-lock.json" ]; then
+          if [ -f "bun.lockb" ]; then
+            curl -fsSL https://bun.sh/install | bash
+            export BUN_INSTALL="$HOME/.bun"
+            export PATH="$BUN_INSTALL/bin:$PATH"
+            bun install || npm install --legacy-peer-deps
+          elif [ -f "package-lock.json" ]; then
             npm ci --legacy-peer-deps || npm install --legacy-peer-deps
           elif [ -f "yarn.lock" ]; then
-            npm install -g yarn && yarn install
-          elif [ -f "bun.lockb" ]; then
-            npm install -g bun && bun install
+            npm install -g yarn && yarn install --ignore-engines
           else
             npm install --legacy-peer-deps
           fi
@@ -90,9 +93,16 @@ jobs:
         if: steps.detect.outputs.project_type == 'web' || steps.detect.outputs.project_type == 'unknown'
         run: |
           echo "=== Building web app ==="
-          npm run build || echo "Build command failed, checking for pre-built files..."
-          echo "=== Build output ==="
-          ls -la dist/ 2>/dev/null || ls -la build/ 2>/dev/null || ls -la out/ 2>/dev/null || echo "No standard build folder found"
+          # Try bun first if lockfile exists
+          if [ -f "bun.lockb" ]; then
+            export BUN_INSTALL="$HOME/.bun"
+            export PATH="$BUN_INSTALL/bin:$PATH"
+            bun run build || npm run build || echo "Build failed, will create placeholder"
+          else
+            npm run build || echo "Build failed, will create placeholder"
+          fi
+          echo "=== Checking build output ==="
+          ls -la dist/ 2>/dev/null || ls -la build/ 2>/dev/null || ls -la out/ 2>/dev/null || echo "No build folder yet"
         env:
           CI: false
           NODE_ENV: production
@@ -101,86 +111,154 @@ jobs:
         if: steps.detect.outputs.project_type == 'web' || steps.detect.outputs.project_type == 'unknown'
         id: build-folder
         run: |
-          if [ -d "dist" ] && [ -f "dist/index.html" ]; then
+          if [ -d "dist" ] && [ "$(ls -A dist 2>/dev/null)" ]; then
             echo "folder=dist" >> $GITHUB_OUTPUT
             echo "✅ Using dist folder"
-          elif [ -d "build" ] && [ -f "build/index.html" ]; then
+          elif [ -d "build" ] && [ "$(ls -A build 2>/dev/null)" ]; then
             echo "folder=build" >> $GITHUB_OUTPUT
             echo "✅ Using build folder"
-          elif [ -d "out" ] && [ -f "out/index.html" ]; then
+          elif [ -d "out" ] && [ "$(ls -A out 2>/dev/null)" ]; then
             echo "folder=out" >> $GITHUB_OUTPUT
             echo "✅ Using out folder"
-          elif [ -d ".next" ]; then
-            mkdir -p dist
-            cp -r .next/static dist/ 2>/dev/null || true
-            cp -r public/* dist/ 2>/dev/null || true
-            echo "folder=dist" >> $GITHUB_OUTPUT
-            echo "✅ Using Next.js output"
+          elif [ -d "public" ] && [ -f "public/index.html" ]; then
+            echo "folder=public" >> $GITHUB_OUTPUT
+            echo "✅ Using public folder (static site)"
           else
-            echo "❌ No build output found, creating placeholder"
+            echo "⚠️ No build output found, creating placeholder"
             mkdir -p dist
-            echo "<!DOCTYPE html><html><head><meta charset='UTF-8'><meta name='viewport' content='width=device-width,initial-scale=1'><title>${{ env.APP_NAME }}</title></head><body><h1>Build Error</h1><p>Web build failed. Please check your project configuration.</p></body></html>" > dist/index.html
+            cat > dist/index.html << 'HTMLEOF'
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>${{ env.APP_NAME }}</title>
+  <style>
+    body { font-family: system-ui; display: flex; align-items: center; justify-content: center; height: 100vh; margin: 0; background: linear-gradient(135deg, #667eea 0%, #764ba2 100%); color: white; text-align: center; }
+    .container { padding: 20px; }
+    h1 { font-size: 2rem; margin-bottom: 1rem; }
+    p { opacity: 0.9; }
+  </style>
+</head>
+<body>
+  <div class="container">
+    <h1>Build Error</h1>
+    <p>The web build failed. Please check your project configuration.</p>
+    <p>Make sure package.json has a valid "build" script.</p>
+  </div>
+</body>
+</html>
+HTMLEOF
             echo "folder=dist" >> $GITHUB_OUTPUT
           fi
 
-      - name: Convert Web to APK
+      - name: Convert Web to APK using Capacitor
         id: web-to-apk
         if: steps.detect.outputs.project_type == 'web' || steps.detect.outputs.project_type == 'unknown'
-        uses: nicoulaj/nicoulaj-web-to-apk-action@master
-        with:
-          build-folder-path: ${{ steps.build-folder.outputs.folder }}
-          app-name: ${{ env.APP_NAME }}
-          output-folder-path: 'output-apk'
+        run: |
+          echo "=== Converting to Android APK ==="
+          BUILD_FOLDER="${{ steps.build-folder.outputs.folder }}"
+          
+          # Create a fresh capacitor project
+          mkdir -p android-build && cd android-build
+          
+          # Initialize npm and install capacitor
+          npm init -y
+          npm install @capacitor/core @capacitor/cli @capacitor/android
+          
+          # Initialize capacitor
+          npx cap init "${{ env.APP_NAME }}" "${{ env.PACKAGE_NAME }}" --web-dir=www
+          
+          # Copy web files
+          mkdir -p www
+          cp -r ../$BUILD_FOLDER/* www/
+          
+          # Add Android platform
+          npx cap add android
+          
+          # Update package name in Android files
+          PACKAGE_PATH=$(echo "${{ env.PACKAGE_NAME }}" | tr '.' '/')
+          
+          # Build APK
+          cd android
+          chmod +x ./gradlew
+          ./gradlew assembleDebug --no-daemon --stacktrace
+          
+          # Copy APK to output
+          mkdir -p ../../output-apk
+          find . -name "*.apk" -exec cp {} ../../output-apk/ \;
+          cd ../..
+          
+          echo "=== APK Build Complete ==="
+          ls -la output-apk/
         continue-on-error: true
 
-      - name: Manual APK Build (Fallback)
+      - name: Fallback APK Build (Manual)
         if: (steps.detect.outputs.project_type == 'web' || steps.detect.outputs.project_type == 'unknown') && steps.web-to-apk.outcome == 'failure'
         run: |
-          echo "=== Manual APK Build (Fallback) ==="
+          echo "=== Fallback APK Build ==="
+          BUILD_FOLDER="${{ steps.build-folder.outputs.folder }}"
           
           # Create Android project structure
-          mkdir -p apk-project/app/src/main/java/$(echo "${{ env.PACKAGE_NAME }}" | tr '.' '/')
+          PACKAGE_PATH=$(echo "${{ env.PACKAGE_NAME }}" | tr '.' '/')
+          mkdir -p apk-project/app/src/main/java/$PACKAGE_PATH
           mkdir -p apk-project/app/src/main/res/values
-          mkdir -p apk-project/app/src/main/res/drawable
           mkdir -p apk-project/app/src/main/assets/www
           
           # Copy web files
-          cp -r ${{ steps.build-folder.outputs.folder }}/* apk-project/app/src/main/assets/www/
+          cp -r $BUILD_FOLDER/* apk-project/app/src/main/assets/www/
           
           # Create MainActivity.java
-          PACKAGE_DIR=$(echo "${{ env.PACKAGE_NAME }}" | tr '.' '/')
-          cat > apk-project/app/src/main/java/$PACKAGE_DIR/MainActivity.java << 'MAINEOF'
-package PLACEHOLDER_PACKAGE;
+          cat > apk-project/app/src/main/java/$PACKAGE_PATH/MainActivity.java << MAINEOF
+package ${{ env.PACKAGE_NAME }};
 import android.app.Activity;
 import android.os.Bundle;
 import android.webkit.WebView;
 import android.webkit.WebSettings;
 import android.webkit.WebViewClient;
+import android.webkit.WebChromeClient;
 public class MainActivity extends Activity {
+    private WebView webView;
     @Override
     protected void onCreate(Bundle savedInstanceState) {
         super.onCreate(savedInstanceState);
-        WebView webView = new WebView(this);
+        webView = new WebView(this);
         setContentView(webView);
         WebSettings settings = webView.getSettings();
         settings.setJavaScriptEnabled(true);
         settings.setDomStorageEnabled(true);
+        settings.setAllowFileAccess(true);
+        settings.setAllowContentAccess(true);
+        settings.setMediaPlaybackRequiresUserGesture(false);
         webView.setWebViewClient(new WebViewClient());
+        webView.setWebChromeClient(new WebChromeClient());
         webView.loadUrl("file:///android_asset/www/index.html");
+    }
+    @Override
+    public void onBackPressed() {
+        if (webView.canGoBack()) {
+            webView.goBack();
+        } else {
+            super.onBackPressed();
+        }
     }
 }
 MAINEOF
-          
-          # Fix package name in MainActivity
-          sed -i "s/PLACEHOLDER_PACKAGE/${{ env.PACKAGE_NAME }}/g" apk-project/app/src/main/java/$PACKAGE_DIR/MainActivity.java
           
           # Create AndroidManifest.xml
           cat > apk-project/app/src/main/AndroidManifest.xml << EOF
 <?xml version="1.0" encoding="utf-8"?>
 <manifest xmlns:android="http://schemas.android.com/apk/res/android" package="${{ env.PACKAGE_NAME }}">
     <uses-permission android:name="android.permission.INTERNET"/>
-    <application android:label="${{ env.APP_NAME }}" android:usesCleartextTraffic="true">
-        <activity android:name=".MainActivity" android:exported="true">
+    <uses-permission android:name="android.permission.ACCESS_NETWORK_STATE"/>
+    <application 
+        android:label="${{ env.APP_NAME }}" 
+        android:usesCleartextTraffic="true"
+        android:hardwareAccelerated="true">
+        <activity 
+            android:name=".MainActivity" 
+            android:exported="true"
+            android:configChanges="orientation|screenSize|keyboardHidden">
             <intent-filter>
                 <action android:name="android.intent.action.MAIN"/>
                 <category android:name="android.intent.category.LAUNCHER"/>
@@ -203,7 +281,10 @@ android {
         versionCode 1
         versionName "1.0"
     }
-    buildTypes { debug { minifyEnabled false } }
+    buildTypes { 
+        debug { minifyEnabled false }
+        release { minifyEnabled false }
+    }
     compileOptions {
         sourceCompatibility JavaVersion.VERSION_17
         targetCompatibility JavaVersion.VERSION_17
@@ -232,12 +313,22 @@ EOF
           # Create gradle.properties
           cat > apk-project/gradle.properties << EOF
 android.useAndroidX=true
-org.gradle.jvmargs=-Xmx2048m
+org.gradle.jvmargs=-Xmx4096m -XX:+HeapDumpOnOutOfMemoryError
+org.gradle.parallel=true
 EOF
           
           # Create gradle wrapper
           cd apk-project
           mkdir -p gradle/wrapper
+          
+          # Download gradle wrapper jar
+          curl -sL "https://github.com/nicoulaj/nicoulaj-web-to-apk-action/raw/master/gradle/wrapper/gradle-wrapper.jar" -o gradle/wrapper/gradle-wrapper.jar || {
+            echo "Downloading gradle directly..."
+            curl -sL "https://services.gradle.org/distributions/gradle-8.5-bin.zip" -o gradle.zip
+            unzip -q gradle.zip
+            ./gradle-8.5/bin/gradle wrapper --gradle-version 8.5
+          }
+          
           cat > gradle/wrapper/gradle-wrapper.properties << EOF
 distributionBase=GRADLE_USER_HOME
 distributionPath=wrapper/dists
@@ -246,46 +337,35 @@ zipStoreBase=GRADLE_USER_HOME
 zipStorePath=wrapper/dists
 EOF
           
-          # Download and setup gradle wrapper
-          curl -sL https://raw.githubusercontent.com/nicoulaj/nicoulaj-web-to-apk-action/master/gradle/wrapper/gradle-wrapper.jar -o gradle/wrapper/gradle-wrapper.jar ||             curl -sL https://services.gradle.org/distributions/gradle-8.5-bin.zip -o gradle.zip && unzip -q gradle.zip && ./gradle-8.5/bin/gradle wrapper
-          
+          # Create gradlew script
           cat > gradlew << 'GRADLEW'
-#!/bin/sh
-exec java -jar "$(dirname "$0")/gradle/wrapper/gradle-wrapper.jar" "$@"
+#!/usr/bin/env sh
+CLASSPATH=$APP_HOME/gradle/wrapper/gradle-wrapper.jar
+exec java -classpath "$CLASSPATH" org.gradle.wrapper.GradleWrapperMain "$@"
 GRADLEW
           chmod +x gradlew
           
           # Build APK
-          ./gradlew assembleDebug --no-daemon --stacktrace || {
-            echo "Gradle wrapper failed, using system gradle"
-            gradle assembleDebug --no-daemon --stacktrace
-          }
+          ./gradlew assembleDebug --no-daemon --stacktrace || gradle assembleDebug --no-daemon
           
           mkdir -p ../output-apk
-          find . -name "*.apk" -exec cp {} ../output-apk/ ;
+          find . -name "*.apk" -exec cp {} ../output-apk/ \;
           cd ..
           
-          echo "=== APK Build Complete ==="
+          echo "=== Fallback APK Build Complete ==="
           ls -la output-apk/
 
       # ========== NATIVE ANDROID BUILD PATH ==========
-      - name: Update app name (Native)
-        if: steps.detect.outputs.project_type == 'native'
-        run: |
-          if [ -f "app/src/main/res/values/strings.xml" ]; then
-            sed -i 's/<string name="app_name">.*</string>/<string name="app_name">${{ env.APP_NAME }}</string>/' app/src/main/res/values/strings.xml
-          fi
-
-      - name: Build APK (Native)
+      - name: Build Native APK
         if: steps.detect.outputs.project_type == 'native'
         run: |
           chmod +x ./gradlew
           ./gradlew assembleDebug --no-daemon
           mkdir -p output-apk
-          find . -name "*.apk" -path "*/debug/*" -exec cp {} output-apk/ ;
+          find . -name "*.apk" -path "*/debug/*" -exec cp {} output-apk/ \;
 
       # ========== UPLOAD ARTIFACT ==========
-      - name: Find and Upload APK
+      - name: Upload APK
         uses: actions/upload-artifact@v4
         with:
           name: app-debug-${{ env.BUILD_ID }}
@@ -293,4 +373,19 @@ GRADLEW
             output-apk/*.apk
             **/app/build/outputs/apk/debug/*.apk
           retention-days: 1
-          if-no-files-found: error
+          if-no-files-found: warn
+          
+      - name: Build Summary
+        if: always()
+        run: |
+          echo "=== Build Summary ==="
+          echo "App Name: ${{ env.APP_NAME }}"
+          echo "Package: ${{ env.PACKAGE_NAME }}"
+          echo "Build ID: ${{ env.BUILD_ID }}"
+          if [ -d "output-apk" ] && [ "$(ls -A output-apk/*.apk 2>/dev/null)" ]; then
+            echo "✅ APK files found:"
+            ls -la output-apk/*.apk
+          else
+            echo "❌ No APK files generated"
+            exit 1
+          fi
