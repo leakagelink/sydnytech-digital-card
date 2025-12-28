@@ -23,36 +23,286 @@ jobs:
       - name: Checkout code
         uses: actions/checkout@v4
 
+      - name: Detect project type
+        id: detect
+        run: |
+          if [ -f "gradlew" ] && ([ -f "app/build.gradle" ] || [ -f "app/build.gradle.kts" ]); then
+            echo "project_type=native" >> $GITHUB_OUTPUT
+            echo "Detected Native Android project"
+          elif [ -f "package.json" ]; then
+            echo "project_type=web" >> $GITHUB_OUTPUT
+            echo "Detected Web/React project - will wrap in WebView"
+          else
+            echo "project_type=unknown" >> $GITHUB_OUTPUT
+            echo "Unknown project type"
+          fi
+
+      # ========== WEB PROJECT BUILD PATH ==========
+      - name: Setup Node.js (Web projects)
+        if: steps.detect.outputs.project_type == 'web'
+        uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+          cache: 'npm'
+
+      - name: Install dependencies (Web projects)
+        if: steps.detect.outputs.project_type == 'web'
+        run: npm ci || npm install
+
+      - name: Build web app
+        if: steps.detect.outputs.project_type == 'web'
+        run: npm run build
+        env:
+          CI: false
+
       - name: Set up JDK 17
         uses: actions/setup-java@v4
         with:
           java-version: '17'
           distribution: 'temurin'
-          cache: gradle
 
       - name: Setup Android SDK
         uses: android-actions/setup-android@v3
 
-      - name: Validate Android project
-        id: validate
+      - name: Create Android wrapper project (Web projects)
+        if: steps.detect.outputs.project_type == 'web'
         run: |
-          if [ ! -f "gradlew" ]; then
-            echo "ERROR: gradlew not found. This does not appear to be a valid Android project."
-            exit 1
+          mkdir -p android-wrapper
+          cd android-wrapper
+          
+          # Create directory structure
+          mkdir -p app/src/main/java/$(echo "${{ inputs.package_name }}" | tr '.' '/')
+          mkdir -p app/src/main/res/layout
+          mkdir -p app/src/main/res/values
+          mkdir -p app/src/main/res/drawable
+          mkdir -p app/src/main/assets/www
+          mkdir -p gradle/wrapper
+          
+          # Copy built web files
+          cp -r ../dist/* app/src/main/assets/www/ 2>/dev/null || cp -r ../build/* app/src/main/assets/www/ 2>/dev/null || cp -r ../.next/static/* app/src/main/assets/www/ 2>/dev/null || echo "Trying alternate build folder..."
+          
+          # If no build output found, try common locations
+          if [ ! -f "app/src/main/assets/www/index.html" ]; then
+            cp -r ../out/* app/src/main/assets/www/ 2>/dev/null || true
           fi
-          if [ ! -f "app/build.gradle" ] && [ ! -f "app/build.gradle.kts" ]; then
-            echo "ERROR: app/build.gradle not found. Invalid Android project structure."
-            exit 1
+          
+          # Create index.html if still not found (fallback with iframe)
+          if [ ! -f "app/src/main/assets/www/index.html" ]; then
+            # Get the repo URL from git remote
+            REPO_URL=$(cd .. && git config --get remote.origin.url | sed 's/git@github.com:/https:\/\/github.com\//' | sed 's/.git$//')
+            # Extract username and repo name
+            REPO_PATH=$(echo $REPO_URL | sed 's/https:\/\/github.com\///')
+            GITHUB_PAGES_URL="https://$(echo $REPO_PATH | cut -d'/' -f1).github.io/$(echo $REPO_PATH | cut -d'/' -f2)/"
+            
+            echo "<!DOCTYPE html><html><head><meta charset='UTF-8'><meta name='viewport' content='width=device-width,initial-scale=1'><title>${{ inputs.app_name }}</title><style>*{margin:0;padding:0}html,body,iframe{width:100%;height:100%;border:none}</style></head><body><iframe src='$GITHUB_PAGES_URL'></iframe></body></html>" > app/src/main/assets/www/index.html
           fi
-          echo "Android project validation passed"
+          
+          # Create MainActivity.java
+          PACKAGE_PATH=$(echo "${{ inputs.package_name }}" | tr '.' '/')
+          cat > app/src/main/java/$PACKAGE_PATH/MainActivity.java << 'MAINACTIVITY'
+          package ${{ inputs.package_name }};
+          
+          import android.app.Activity;
+          import android.os.Bundle;
+          import android.webkit.WebView;
+          import android.webkit.WebViewClient;
+          import android.webkit.WebSettings;
+          import android.webkit.WebChromeClient;
+          import android.view.View;
+          import android.view.Window;
+          import android.view.WindowManager;
+          
+          public class MainActivity extends Activity {
+              private WebView webView;
+              
+              @Override
+              protected void onCreate(Bundle savedInstanceState) {
+                  super.onCreate(savedInstanceState);
+                  
+                  requestWindowFeature(Window.FEATURE_NO_TITLE);
+                  getWindow().setFlags(WindowManager.LayoutParams.FLAG_FULLSCREEN, WindowManager.LayoutParams.FLAG_FULLSCREEN);
+                  
+                  webView = new WebView(this);
+                  setContentView(webView);
+                  
+                  WebSettings settings = webView.getSettings();
+                  settings.setJavaScriptEnabled(true);
+                  settings.setDomStorageEnabled(true);
+                  settings.setAllowFileAccess(true);
+                  settings.setAllowContentAccess(true);
+                  settings.setCacheMode(WebSettings.LOAD_DEFAULT);
+                  settings.setMixedContentMode(WebSettings.MIXED_CONTENT_ALWAYS_ALLOW);
+                  
+                  webView.setWebViewClient(new WebViewClient());
+                  webView.setWebChromeClient(new WebChromeClient());
+                  webView.loadUrl("file:///android_asset/www/index.html");
+              }
+              
+              @Override
+              public void onBackPressed() {
+                  if (webView.canGoBack()) {
+                      webView.goBack();
+                  } else {
+                      super.onBackPressed();
+                  }
+              }
+          }
+          MAINACTIVITY
+          
+          # Fix the package declaration (the heredoc escapes it wrong)
+          sed -i "s/package .*inputs.package_name.*/package ${{ inputs.package_name }};/" app/src/main/java/$PACKAGE_PATH/MainActivity.java
+          
+          # Create AndroidManifest.xml
+          cat > app/src/main/AndroidManifest.xml << MANIFEST
+          <?xml version="1.0" encoding="utf-8"?>
+          <manifest xmlns:android="http://schemas.android.com/apk/res/android"
+              package="${{ inputs.package_name }}">
+              
+              <uses-permission android:name="android.permission.INTERNET" />
+              <uses-permission android:name="android.permission.ACCESS_NETWORK_STATE" />
+              
+              <application
+                  android:allowBackup="true"
+                  android:icon="@drawable/ic_launcher"
+                  android:label="${{ inputs.app_name }}"
+                  android:theme="@android:style/Theme.NoTitleBar.Fullscreen"
+                  android:usesCleartextTraffic="true">
+                  
+                  <activity
+                      android:name=".MainActivity"
+                      android:exported="true"
+                      android:configChanges="orientation|screenSize|keyboardHidden">
+                      <intent-filter>
+                          <action android:name="android.intent.action.MAIN" />
+                          <category android:name="android.intent.category.LAUNCHER" />
+                      </intent-filter>
+                  </activity>
+              </application>
+          </manifest>
+          MANIFEST
+          
+          # Create default launcher icon
+          cat > app/src/main/res/drawable/ic_launcher.xml << ICON
+          <?xml version="1.0" encoding="utf-8"?>
+          <vector xmlns:android="http://schemas.android.com/apk/res/android"
+              android:width="108dp"
+              android:height="108dp"
+              android:viewportWidth="108"
+              android:viewportHeight="108">
+              <path
+                  android:fillColor="#3DDC84"
+                  android:pathData="M54,54m-50,0a50,50 0,1 1,100 0a50,50 0,1 1,-100 0"/>
+              <path
+                  android:fillColor="#FFFFFF"
+                  android:pathData="M34,44l40,0l0,20l-40,0z"/>
+          </vector>
+          ICON
+          
+          # Create app/build.gradle
+          cat > app/build.gradle << BUILDGRADLE
+          plugins {
+              id 'com.android.application'
+          }
+          
+          android {
+              namespace '${{ inputs.package_name }}'
+              compileSdk 34
+              
+              defaultConfig {
+                  applicationId "${{ inputs.package_name }}"
+                  minSdk 24
+                  targetSdk 34
+                  versionCode 1
+                  versionName "1.0"
+              }
+              
+              buildTypes {
+                  release {
+                      minifyEnabled false
+                  }
+                  debug {
+                      minifyEnabled false
+                  }
+              }
+              
+              compileOptions {
+                  sourceCompatibility JavaVersion.VERSION_17
+                  targetCompatibility JavaVersion.VERSION_17
+              }
+          }
+          
+          dependencies {
+              implementation 'androidx.appcompat:appcompat:1.6.1'
+              implementation 'androidx.webkit:webkit:1.8.0'
+          }
+          BUILDGRADLE
+          
+          # Create settings.gradle
+          cat > settings.gradle << SETTINGS
+          pluginManagement {
+              repositories {
+                  google()
+                  mavenCentral()
+                  gradlePluginPortal()
+              }
+          }
+          dependencyResolutionManagement {
+              repositoriesMode.set(RepositoriesMode.FAIL_ON_PROJECT_REPOS)
+              repositories {
+                  google()
+                  mavenCentral()
+              }
+          }
+          rootProject.name = "${{ inputs.app_name }}"
+          include ':app'
+          SETTINGS
+          
+          # Create root build.gradle
+          cat > build.gradle << ROOTGRADLE
+          plugins {
+              id 'com.android.application' version '8.2.0' apply false
+          }
+          ROOTGRADLE
+          
+          # Create gradle.properties
+          cat > gradle.properties << GRADLEPROPS
+          android.useAndroidX=true
+          android.enableJetifier=true
+          org.gradle.jvmargs=-Xmx2048m -Dfile.encoding=UTF-8
+          GRADLEPROPS
+          
+          # Create gradle wrapper properties
+          cat > gradle/wrapper/gradle-wrapper.properties << WRAPPERPROP
+          distributionBase=GRADLE_USER_HOME
+          distributionPath=wrapper/dists
+          distributionUrl=https\://services.gradle.org/distributions/gradle-8.5-bin.zip
+          zipStoreBase=GRADLE_USER_HOME
+          zipStorePath=wrapper/dists
+          WRAPPERPROP
+          
+          # Download and setup gradle wrapper
+          wget -q https://raw.githubusercontent.com/nicoulaj/gradle-wrapper-files/refs/heads/master/gradle/wrapper/gradle-wrapper.jar -O gradle/wrapper/gradle-wrapper.jar
+          
+          cat > gradlew << 'GRADLEW'
+          #!/bin/sh
+          DIRNAME=$(dirname "$0")
+          exec java -jar "$DIRNAME/gradle/wrapper/gradle-wrapper.jar" "$@"
+          GRADLEW
+          chmod +x gradlew
+          
+          echo "Android wrapper project created successfully"
+          ls -la app/src/main/assets/www/ || echo "No www files yet"
 
-      - name: Update app name
+      # ========== NATIVE ANDROID BUILD PATH ==========
+      - name: Update app name (Native)
+        if: steps.detect.outputs.project_type == 'native'
         run: |
           if [ -f "app/src/main/res/values/strings.xml" ]; then
             sed -i 's/<string name="app_name">.*<\/string>/<string name="app_name">${{ inputs.app_name }}<\/string>/' app/src/main/res/values/strings.xml
           fi
 
-      - name: Update package name
+      - name: Update package name (Native)
+        if: steps.detect.outputs.project_type == 'native'
         run: |
           OLD_PACKAGE=$(grep -oP 'namespace\s*=?\s*["'"'"']\K[^"'"'"']+' app/build.gradle* 2>/dev/null | head -1 || grep -oP 'applicationId\s*["'"'"']\K[^"'"'"']+' app/build.gradle* 2>/dev/null | head -1)
           if [ -n "$OLD_PACKAGE" ]; then
@@ -61,16 +311,27 @@ jobs:
             find . -name "AndroidManifest.xml" -exec sed -i "s/$OLD_PACKAGE/${{ inputs.package_name }}/g" {} \;
           fi
 
-      - name: Grant execute permission for gradlew
-        run: chmod +x ./gradlew
+      # ========== BUILD STEP ==========
+      - name: Build APK (Native)
+        if: steps.detect.outputs.project_type == 'native'
+        run: |
+          chmod +x ./gradlew
+          ./gradlew assembleDebug --no-daemon
 
-      - name: Build Debug APK
-        run: ./gradlew assembleDebug --no-daemon
+      - name: Build APK (Web wrapper)
+        if: steps.detect.outputs.project_type == 'web'
+        run: |
+          cd android-wrapper
+          chmod +x ./gradlew
+          ./gradlew assembleDebug --no-daemon --stacktrace
 
       - name: Find APK
         id: find-apk
         run: |
           APK_PATH=$(find . -name "*.apk" -path "*/debug/*" | head -1)
+          if [ -z "$APK_PATH" ]; then
+            APK_PATH=$(find . -name "*.apk" | head -1)
+          fi
           echo "apk_path=$APK_PATH" >> $GITHUB_OUTPUT
           echo "Found APK at: $APK_PATH"
 
